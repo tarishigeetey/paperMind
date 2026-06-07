@@ -1,0 +1,42 @@
+[project]
+name = "papermind"
+version = "0.1.0"
+description = "Production RAG system for academic research papers"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Web framework (like Spring Boot)
+    "fastapi[standard]>=0.115.0",
+    "uvicorn>=0.34.0",
+
+    # Data validation (like @Valid + Lombok @Data combined)
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.8.0",
+
+    # Database (like JPA + HikariCP)
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "alembic>=1.13.0",
+
+    # Search engine client
+    "opensearch-py>=3.0.0",
+
+    # HTTP client (like RestTemplate)
+    "httpx>=0.28.0",
+    "requests>=2.32.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "jupyter>=1.1.0",
+    "notebook>=7.4.0",
+    "ruff>=0.11.0",   # linter + formatter (like Checkstyle + Spotless)
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
