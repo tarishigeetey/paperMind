@@ -1,0 +1,5 @@
+{
+  "include": ["src", "tests"],
+  "exclude": ["airflow"],
+  "pythonVersion": "3.12"
+}
