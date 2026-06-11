@@ -16,10 +16,10 @@ class HealthResponse(BaseModel):
     """
 
     status: str = Field(..., description="ok or degraded")
-    version: str = Field(..., description="App version")
-    environment: str = Field(..., description="development/production")
-    service_name: str = Field(..., description="Service identifier")
-    services: Optional[Dict[str, ServiceStatus]] = Field(None, description="Per-service health")
+    version: str
+    environment: str
+    service_name: str
+    services: Optional[Dict[str, ServiceStatus]] = None
 
     class Config:
         json_schema_extra = {

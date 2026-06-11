@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from src.dependencies import SessionDep
 from src.repositories.paper import PaperRepository
-from src.schemas.paper import PaperCreate, PaperResponse
+from src.schemas.arxiv.paper import PaperCreate, PaperResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/papers", tags=["papers"])

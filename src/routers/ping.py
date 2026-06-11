@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Request
 
 from src.config import get_settings
-from src.schemas.health import HealthResponse, ServiceStatus
+from src.schemas.api.health import HealthResponse, ServiceStatus
 from src.services.ollama.client import OllamaClient
 
 logger = logging.getLogger(__name__)
@@ -34,17 +34,12 @@ def health_check(request: Request) -> HealthResponse:
         database = request.app.state.database
         with database.get_session() as session:
             from sqlalchemy import text
+
             session.execute(text("SELECT 1"))
-        services["database"] = ServiceStatus(
-            status="healthy",
-            message="Connected successfully"
-        )
+        services["database"] = ServiceStatus(status="healthy", message="Connected successfully")
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
-        services["database"] = ServiceStatus(
-            status="unhealthy",
-            message=str(e)
-        )
+        services["database"] = ServiceStatus(status="unhealthy", message=str(e))
 
     # ── Check Ollama ──────────────────────────────────────────────
     try:
@@ -52,24 +47,15 @@ def health_check(request: Request) -> HealthResponse:
         if ollama.is_healthy():
             models = ollama.get_available_models()
             services["ollama"] = ServiceStatus(
-                status="healthy",
-                message=f"Available models: {', '.join(models) or 'none pulled yet'}"
+                status="healthy", message=f"Available models: {', '.join(models) or 'none pulled yet'}"
             )
         else:
-            services["ollama"] = ServiceStatus(
-                status="unhealthy",
-                message="Ollama server not reachable"
-            )
+            services["ollama"] = ServiceStatus(status="unhealthy", message="Ollama server not reachable")
     except Exception as e:
-        services["ollama"] = ServiceStatus(
-            status="unhealthy",
-            message=str(e)
-        )
+        services["ollama"] = ServiceStatus(status="unhealthy", message=str(e))
 
     # Overall status — degraded if any service is unhealthy
-    overall = "ok" if all(
-        s.status == "healthy" for s in services.values()
-    ) else "degraded"
+    overall = "ok" if all(s.status == "healthy" for s in services.values()) else "degraded"
 
     return HealthResponse(
         status=overall,

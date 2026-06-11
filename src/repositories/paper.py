@@ -1,47 +1,77 @@
 from typing import List, Optional
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.models.paper import Paper
-from src.schemas.paper import PaperCreate
+from src.schemas.arxiv.paper import PaperCreate
 
 
 class PaperRepository:
-    """
-    All database operations for Paper.
-    Like Spring's @Repository / JpaRepository.
-    Never contains business logic — only DB reads and writes.
-    """
-
     def __init__(self, session: Session):
-        self.session = session  # injected — never created here
+        self.session = session
 
     def create(self, paper: PaperCreate) -> Paper:
-        """Insert a new paper. Like save() in JpaRepository."""
-        db_paper = Paper(**paper.model_dump())  # schema → model
+        db_paper = Paper(**paper.model_dump())
         self.session.add(db_paper)
         self.session.commit()
-        self.session.refresh(db_paper)  # reload from DB to get generated fields
+        self.session.refresh(db_paper)
         return db_paper
 
     def get_by_arxiv_id(self, arxiv_id: str) -> Optional[Paper]:
-        """Find by natural key. Like findByArxivId() in Spring Data."""
-        return self.session.query(Paper).filter(Paper.arxiv_id == arxiv_id).first()
+        stmt = select(Paper).where(Paper.arxiv_id == arxiv_id)
+        return self.session.scalar(stmt)
 
     def get_by_id(self, paper_id: UUID) -> Optional[Paper]:
-        """Find by primary key. Like findById() in JpaRepository."""
-        return self.session.query(Paper).filter(Paper.id == paper_id).first()
+        stmt = select(Paper).where(Paper.id == paper_id)
+        return self.session.scalar(stmt)
 
     def get_all(self, limit: int = 100, offset: int = 0) -> List[Paper]:
+        stmt = select(Paper).order_by(Paper.published_date.desc()).limit(limit).offset(offset)
+        return list(self.session.scalars(stmt))
+
+    def get_count(self) -> int:
+        stmt = select(func.count(Paper.id))
+        return self.session.scalar(stmt) or 0
+
+    def get_processed_papers(self, limit: int = 100, offset: int = 0) -> List[Paper]:
+        """Papers with PDF content successfully parsed."""
+        stmt = (
+            select(Paper)
+            .where(Paper.pdf_processed == True)
+            .order_by(Paper.pdf_processing_date.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self.session.scalars(stmt))
+
+    def get_unprocessed_papers(self, limit: int = 100, offset: int = 0) -> List[Paper]:
+        """Papers stored without PDF content — need processing."""
+        stmt = select(Paper).where(Paper.pdf_processed == False).order_by(Paper.published_date.desc()).limit(limit).offset(offset)
+        return list(self.session.scalars(stmt))
+
+    def get_processing_stats(self) -> dict:
         """
-        Paginated list, newest first.
-        Like findAll(Pageable pageable) in JpaRepository.
+        Dashboard stats for monitoring the pipeline.
+        Like a @Query aggregation in Spring Data.
+        Called by the daily report task in Airflow.
         """
-        return self.session.query(Paper).order_by(Paper.published_date.desc()).limit(limit).offset(offset).all()
+        total = self.get_count()
+        processed_stmt = select(func.count(Paper.id)).where(Paper.pdf_processed == True)
+        processed = self.session.scalar(processed_stmt) or 0
+        text_stmt = select(func.count(Paper.id)).where(Paper.raw_text != None)
+        with_text = self.session.scalar(text_stmt) or 0
+
+        return {
+            "total_papers": total,
+            "processed_papers": processed,
+            "papers_with_text": with_text,
+            "processing_rate": (processed / total * 100) if total > 0 else 0,
+            "text_extraction_rate": (with_text / processed * 100) if processed > 0 else 0,
+        }
 
     def update(self, paper: Paper) -> Paper:
-        """Persist changes to an existing paper."""
         self.session.add(paper)
         self.session.commit()
         self.session.refresh(paper)
@@ -49,17 +79,12 @@ class PaperRepository:
 
     def upsert(self, paper_create: PaperCreate) -> Paper:
         """
-        Insert if not exists, update if exists.
-        No equivalent in basic JpaRepository — you'd write
-        a custom @Query or use merge() in JPA.
-        Critical for Week 2 — arXiv pipeline runs daily,
-        same paper might come in multiple times.
+        Insert if new, update if exists.
+        Critical for daily pipeline — same paper can appear multiple times.
         """
         existing = self.get_by_arxiv_id(paper_create.arxiv_id)
         if existing:
-            # update all fields on the existing DB object
             for key, value in paper_create.model_dump(exclude_unset=True).items():
                 setattr(existing, key, value)
             return self.update(existing)
-        else:
-            return self.create(paper_create)
+        return self.create(paper_create)
