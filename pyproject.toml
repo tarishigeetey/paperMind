@@ -16,6 +16,10 @@ dependencies = [
     "requests>=2.32.0",
     "ipykernel>=6.31.0",
     "apache-airflow>=3.2.2",
+
+    "docling>=2.0.0",
+    "pypdfium2>=4.0.0",
+    "python-dateutil>=2.9.0",
 ]
 
 [dependency-groups]
