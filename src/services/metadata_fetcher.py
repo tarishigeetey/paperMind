@@ -177,7 +177,7 @@ class MetadataFetcher:
 
         # Process results
         for paper, result in zip(papers, pipeline_results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 error_msg = f"Pipeline error for {paper.arxiv_id}: {result}"
                 logger.error(error_msg)
                 results["errors"].append(error_msg)
@@ -266,6 +266,8 @@ class MetadataFetcher:
         """
         try:
             pdf_content = parsed_paper.pdf_content
+            if not pdf_content:
+                return {"pdf_processed": False, "parser_metadata": {"error": "No PDF content"}}
 
             sections = [{"title": s.title, "content": s.content} for s in pdf_content.sections]
 

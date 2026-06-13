@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.db.factory import make_database
-from src.routers import ask, papers, ping
+from src.routers import papers, ping
 
 # Configure logging once at app level
 # Like logging.properties in Spring
@@ -91,7 +91,6 @@ def create_app() -> FastAPI:
     # Like @RequestMapping("/api/v1") on every controller
     app.include_router(ping.router, prefix="/api/v1")
     app.include_router(papers.router, prefix="/api/v1")
-    app.include_router(ask.router, prefix="/api/v1")
 
     return app
 

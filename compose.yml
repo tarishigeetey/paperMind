@@ -2,38 +2,32 @@ services:
 
   # ── FastAPI app ──────────────────────────────────────────────────
   api:
-    build: .                          # uses root Dockerfile
+    build: .
     container_name: rag-api
     ports:
       - "8000:8000"
     depends_on:
       postgres:
-        condition: service_healthy    # waits for postgres to be ready
+        condition: service_healthy
       opensearch:
-        condition: service_healthy    # waits for opensearch to be ready
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    env_file:
-      - .env                          # loads your .env file
     environment:
-      # Override .env values with Docker container hostnames
-      # 'postgres' resolves to the postgres container IP
-      # 'opensearch' resolves to the opensearch container IP
-      # This is why we have defaults in config.py — local uses localhost,
-      # Docker overrides with container names
-      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
       - OPENSEARCH_HOST=http://opensearch:9200
       - OLLAMA_HOST=http://ollama:11434
+      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+      - ENVIRONMENT=development
     networks:
       - rag-network
 
   # ── PostgreSQL ───────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine         # alpine = smaller image
+    image: postgres:16-alpine
     container_name: rag-postgres
     environment:
       - POSTGRES_DB=rag_db
@@ -44,7 +38,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data   # persists across restarts
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
       interval: 5s
@@ -62,7 +56,7 @@ services:
     environment:
       - discovery.type=single-node
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-      - DISABLE_SECURITY_PLUGIN=true     # dev only — no TLS
+      - DISABLE_SECURITY_PLUGIN=true
       - bootstrap.memory_lock=true
     ports:
       - "9200:9200"
@@ -78,12 +72,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s              # OpenSearch takes 60s to start
+      start_period: 60s
     restart: unless-stopped
     networks:
       - rag-network
 
-  # ── OpenSearch Dashboards (like Kibana) ──────────────────────────
+  # ── OpenSearch Dashboards ────────────────────────────────────────
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:2.19.0
     container_name: rag-dashboards
@@ -106,28 +100,26 @@ services:
   # ── Airflow ──────────────────────────────────────────────────────
   airflow:
     build:
-      context: ./airflow              # uses airflow/Dockerfile
+      context: ./airflow
       dockerfile: Dockerfile
     container_name: rag-airflow
-    # user: "50000:0"                 # uncomment if on Linux/WSL
     depends_on:
       postgres:
         condition: service_healthy
-      opensearch:
-        condition: service_healthy
-    env_file:
-      - .env
     environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
       - AIRFLOW_HOME=/opt/airflow
-      - PYTHONPATH=/opt/airflow/src   # so DAGs can import from src/
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
       - OPENSEARCH_HOST=http://opensearch:9200
-      - OLLAMA_HOST=http://ollama:11434
+      - PYTHONPATH=/opt/airflow/src
     volumes:
-      - ./airflow/dags:/opt/airflow/dags       # hot reload DAGs
+      - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./src:/opt/airflow/src                 # share src/ with Airflow
+      - ./src:/opt/airflow/src
     ports:
       - "8080:8080"
     healthcheck:
@@ -135,18 +127,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s             # Airflow takes longest to start
+      start_period: 2m0s
     networks:
       - rag-network
 
-  # ── Ollama (local LLM server) ────────────────────────────────────
+  # ── Ollama ───────────────────────────────────────────────────────
   ollama:
     image: ollama/ollama:0.11.2
     container_name: rag-ollama
     ports:
       - "11434:11434"
     volumes:
-      - ollama_data:/root/.ollama    # persists downloaded models
+      - ollama_data:/root/.ollama
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
@@ -156,14 +148,12 @@ services:
     networks:
       - rag-network
 
-# ── Named volumes — data persists when containers restart ──────────
 volumes:
   postgres_data:
   opensearch_data:
   ollama_data:
   airflow_logs:
 
-# ── Network — all containers talk to each other ───────────────────
 networks:
   rag-network:
     driver: bridge

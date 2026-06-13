@@ -1,3 +1,3 @@
-from src.routers import ask, papers, ping
+from src.routers import papers, ping
 
-__all__ = ["ping", "papers", "ask"]
+__all__ = ["ping", "papers"]
