@@ -5,19 +5,11 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve project root from this file's location
-# src/config.py → src/ → project root
 PROJECT_ROOT = Path(__file__).parent.parent
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 
 class BaseConfigSettings(BaseSettings):
-    """
-    Base settings class all other settings inherit from.
-    Loads from both local .env and the resolved project root .env.
-    frozen=True makes all settings immutable after creation.
-    """
-
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
         extra="ignore",
@@ -28,8 +20,6 @@ class BaseConfigSettings(BaseSettings):
 
 
 class ArxivSettings(BaseConfigSettings):
-    """arXiv API client settings — reads ARXIV__* env vars."""
-
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
         env_prefix="ARXIV__",
@@ -57,14 +47,11 @@ class ArxivSettings(BaseConfigSettings):
     @field_validator("pdf_cache_dir")
     @classmethod
     def validate_cache_dir(cls, v: str) -> str:
-        """Create cache directory if it doesn't exist."""
         os.makedirs(v, exist_ok=True)
         return v
 
 
 class PDFParserSettings(BaseConfigSettings):
-    """PDF parser settings — reads PDF_PARSER__* env vars."""
-
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
         env_prefix="PDF_PARSER__",
@@ -79,10 +66,30 @@ class PDFParserSettings(BaseConfigSettings):
     do_table_structure: bool = True
 
 
+class ChunkingSettings(BaseConfigSettings):
+    """
+    Controls how papers are split into chunks for hybrid search.
+    Week 4 addition.
+    Like @ConfigurationProperties(prefix="chunking") in Spring.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="CHUNKING__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    chunk_size: int = 600  # target words per chunk
+    overlap_size: int = 100  # overlap words between adjacent chunks
+    min_chunk_size: int = 100  # skip chunks smaller than this
+    section_based: bool = True  # prefer section boundaries when available
+
+
 class OpenSearchSettings(BaseConfigSettings):
     """
-    OpenSearch settings — reads OPENSEARCH__* env vars.
-    Week 3 addition.
+    Week 4 update — adds vector search configuration.
     """
 
     model_config = SettingsConfigDict(
@@ -95,7 +102,19 @@ class OpenSearchSettings(BaseConfigSettings):
 
     host: str = "http://localhost:9200"
     index_name: str = "arxiv-papers"
-    max_text_size: int = 1_000_000  # 1MB max text per document
+
+    # chunk index = "{index_name}-{suffix}" = "arxiv-papers-chunks"
+    chunk_index_suffix: str = "chunks"
+
+    max_text_size: int = 1_000_000
+
+    # Vector search settings
+    vector_dimension: int = 1024  # Jina embeddings-v3 dimensions
+    vector_space_type: str = "cosinesimil"  # cosine similarity
+
+    # Hybrid search pipeline
+    rrf_pipeline_name: str = "hybrid-rrf-pipeline"
+    hybrid_search_size_multiplier: int = 2  # fetch 2x results for better recall
 
 
 class Settings(BaseConfigSettings):
@@ -103,9 +122,6 @@ class Settings(BaseConfigSettings):
 
     app_version: str = "0.1.0"
     debug: bool = True
-
-    # Literal type — only these three values accepted
-    # Pydantic validates at startup — typo in .env crashes immediately
     environment: Literal["development", "staging", "production"] = "development"
     service_name: str = "rag-api"
 
@@ -115,20 +131,24 @@ class Settings(BaseConfigSettings):
     postgres_pool_size: int = 20
     postgres_max_overflow: int = 0
 
-    # Ollama — simplified in Week 3 (list → single model)
+    # Ollama
     ollama_host: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2:1b"  # single model, not a list
+    ollama_model: str = "llama3.2:1b"
     ollama_timeout: int = 300
 
-    # Nested settings — each reads their own env prefix
+    # Jina AI embeddings API key
+    # Get free key at jina.ai — 1M tokens free per month
+    jina_api_key: str = ""
+
+    # Nested settings
     arxiv: ArxivSettings = Field(default_factory=ArxivSettings)
     pdf_parser: PDFParserSettings = Field(default_factory=PDFParserSettings)
+    chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     opensearch: OpenSearchSettings = Field(default_factory=OpenSearchSettings)
 
     @field_validator("postgres_database_url")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
-        """Fail fast if database URL format is wrong."""
         if not (v.startswith("postgresql://") or v.startswith("postgresql+psycopg2://")):
             raise ValueError("Database URL must start with 'postgresql://' or 'postgresql+psycopg2://'")
         return v
