@@ -1,57 +1,112 @@
-from typing import List
+import os
+from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve project root from this file's location
+# src/config.py → src/ → project root
+PROJECT_ROOT = Path(__file__).parent.parent
+ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
-class DefaultSettings(BaseSettings):
+
+class BaseConfigSettings(BaseSettings):
+    """
+    Base settings class all other settings inherit from.
+    Loads from both local .env and the resolved project root .env.
+    frozen=True makes all settings immutable after creation.
+    """
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[".env", str(ENV_FILE_PATH)],
         extra="ignore",
         frozen=True,
         env_nested_delimiter="__",
+        case_sensitive=False,
     )
 
 
-class ArxivSettings(DefaultSettings):
-    """
-    arXiv API client settings.
-    Like a @ConfigurationProperties(prefix="arxiv") in Spring.
-    """
+class ArxivSettings(BaseConfigSettings):
+    """arXiv API client settings — reads ARXIV__* env vars."""
+
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="ARXIV__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
 
     base_url: str = "https://export.arxiv.org/api/query"
-    namespaces: dict = Field(
-        default={
-            "atom": "http://www.w3.org/2005/Atom",
-            "opensearch": "http://a9.com/-/spec/opensearch/1.1/",
-            "arxiv": "http://arxiv.org/schemas/atom",
-        }
-    )
-    pdf_cache_dir: str = "./data/arxiv_pdfs"  # local cache for downloaded PDFs
-    rate_limit_delay: float = 3.0  # arXiv asks for 3s between requests
+    pdf_cache_dir: str = "./data/arxiv_pdfs"
+    rate_limit_delay: float = 3.0
     timeout_seconds: int = 30
-    max_results: int = 100
-    search_category: str = "cs.AI"  # which arXiv category to fetch
+    max_results: int = 15
+    search_category: str = "cs.AI"
+    download_max_retries: int = 3
+    download_retry_delay_base: float = 5.0
+    max_concurrent_downloads: int = 5
+    max_concurrent_parsing: int = 1
+    namespaces: dict = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "opensearch": "http://a9.com/-/spec/opensearch/1.1/",
+        "arxiv": "http://arxiv.org/schemas/atom",
+    }
+
+    @field_validator("pdf_cache_dir")
+    @classmethod
+    def validate_cache_dir(cls, v: str) -> str:
+        """Create cache directory if it doesn't exist."""
+        os.makedirs(v, exist_ok=True)
+        return v
 
 
-class PDFParserSettings(DefaultSettings):
-    """
-    Docling PDF parser settings.
-    Like a @ConfigurationProperties(prefix="pdf-parser") in Spring.
-    """
+class PDFParserSettings(BaseConfigSettings):
+    """PDF parser settings — reads PDF_PARSER__* env vars."""
 
-    max_pages: int = 30  # skip PDFs longer than this
-    max_file_size_mb: int = 20  # skip PDFs larger than this
-    do_ocr: bool = False  # OCR is very slow — off by default
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="PDF_PARSER__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    max_pages: int = 30
+    max_file_size_mb: int = 20
+    do_ocr: bool = False
     do_table_structure: bool = True
 
 
-class Settings(DefaultSettings):
-    """Application settings — root config object."""
+class OpenSearchSettings(BaseConfigSettings):
+    """
+    OpenSearch settings — reads OPENSEARCH__* env vars.
+    Week 3 addition.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="OPENSEARCH__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    host: str = "http://localhost:9200"
+    index_name: str = "arxiv-papers"
+    max_text_size: int = 1_000_000  # 1MB max text per document
+
+
+class Settings(BaseConfigSettings):
+    """Root application settings."""
 
     app_version: str = "0.1.0"
     debug: bool = True
-    environment: str = "development"
+
+    # Literal type — only these three values accepted
+    # Pydantic validates at startup — typo in .env crashes immediately
+    environment: Literal["development", "staging", "production"] = "development"
     service_name: str = "rag-api"
 
     # PostgreSQL
@@ -60,26 +115,22 @@ class Settings(DefaultSettings):
     postgres_pool_size: int = 20
     postgres_max_overflow: int = 0
 
-    # OpenSearch
-    opensearch_host: str = "http://localhost:9200"
-
-    # Ollama
+    # Ollama — simplified in Week 3 (list → single model)
     ollama_host: str = "http://localhost:11434"
-    ollama_models: List[str] = Field(default=["llama3.2:1b"])
-    ollama_default_model: str = "llama3.2:1b"
+    ollama_model: str = "llama3.2:1b"  # single model, not a list
     ollama_timeout: int = 300
 
-    # Week 2 — nested settings objects
-    # Field(default_factory=...) creates a fresh instance each time
-    # Like @Autowired ArxivConfig arxivConfig in Spring
+    # Nested settings — each reads their own env prefix
     arxiv: ArxivSettings = Field(default_factory=ArxivSettings)
     pdf_parser: PDFParserSettings = Field(default_factory=PDFParserSettings)
+    opensearch: OpenSearchSettings = Field(default_factory=OpenSearchSettings)
 
-    @field_validator("ollama_models", mode="before")
+    @field_validator("postgres_database_url")
     @classmethod
-    def parse_ollama_models(cls, v):
-        if isinstance(v, str):
-            return [model.strip() for model in v.split(",") if model.strip()]
+    def validate_database_url(cls, v: str) -> str:
+        """Fail fast if database URL format is wrong."""
+        if not (v.startswith("postgresql://") or v.startswith("postgresql+psycopg2://")):
+            raise ValueError("Database URL must start with 'postgresql://' or 'postgresql+psycopg2://'")
         return v
 
 
