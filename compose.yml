@@ -18,10 +18,9 @@ services:
       retries: 3
       start_period: 40s
     environment:
-      - environment:
+      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
       - OPENSEARCH__HOST=http://opensearch:9200
       - OLLAMA_HOST=http://ollama:11434
-      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
       - ENVIRONMENT=development
     networks:
       - rag-network
@@ -114,7 +113,7 @@ services:
       - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
       - AIRFLOW_HOME=/opt/airflow
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
-      - OPENSEARCH_HOST=http://opensearch:9200
+      - OPENSEARCH__HOST=http://opensearch:9200
       - PYTHONPATH=/opt/airflow/src
     volumes:
       - ./airflow/dags:/opt/airflow/dags
