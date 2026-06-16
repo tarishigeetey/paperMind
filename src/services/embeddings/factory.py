@@ -1,25 +1,28 @@
-from functools import lru_cache
+from typing import Optional
 
-from src.config import get_settings
-from src.services.embeddings.jina_client import JinaEmbeddingsClient
+from src.config import Settings, get_settings
+from .jina_client import JinaEmbeddingsClient
 
-@lru_cache(maxsize=1)
-def make_embeddings_client() -> JinaEmbeddingsClient:
+
+def make_embeddings_service(
+    settings: Optional[Settings] = None,
+) -> JinaEmbeddingsClient:
     """
-    Factory — creates a cached JinaEmbeddingsClient.
-
-    @lru_cache = singleton.
-    The HTTP client inside JinaEmbeddingsClient is reused
-    across all requests — no connection overhead per call.
-
-    Like a @Bean singleton in Spring.
+    Factory — creates embeddings service.
+    Creates new instance each time — avoids closed client issues.
     """
-    settings = get_settings()
+    if settings is None:
+        settings = get_settings()
+    return JinaEmbeddingsClient(api_key=settings.jina_api_key)
 
-    if not settings.jina_api_key:
-        raise ValueError(
-            "JINA_API_KEY not set in .env. "
-            "Get a free key at jina.ai"
-        )
 
+def make_embeddings_client(
+    settings: Optional[Settings] = None,
+) -> JinaEmbeddingsClient:
+    """
+    Alias for make_embeddings_service.
+    Called by HybridIndexingService factory.
+    """
+    if settings is None:
+        settings = get_settings()
     return JinaEmbeddingsClient(api_key=settings.jina_api_key)
