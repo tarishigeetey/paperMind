@@ -1,20 +1,35 @@
-from functools import lru_cache
+"""Unified factory for OpenSearch client."""
 
-from src.config import get_settings
-from src.services.opensearch.client import OpenSearchClient
+from functools import lru_cache
+from typing import Optional
+
+from src.config import Settings, get_settings
+
+from .client import OpenSearchClient
 
 
 @lru_cache(maxsize=1)
-def make_opensearch_client() -> OpenSearchClient:
-    """
-    Factory — creates a cached OpenSearchClient.
-
-    @lru_cache because the OpenSearch connection is expensive to create.
-    One instance shared across the entire application.
-    Like a Spring @Bean singleton.
-    """
-    settings = get_settings()
+def make_opensearch_client(
+    settings: Optional[Settings] = None,
+) -> OpenSearchClient:
+    """Factory — creates cached OpenSearch client singleton."""
+    if settings is None:
+        settings = get_settings()
     return OpenSearchClient(
         host=settings.opensearch.host,
+        settings=settings,
+    )
+
+
+def make_opensearch_client_fresh(
+    settings: Optional[Settings] = None,
+    host: Optional[str] = None,
+) -> OpenSearchClient:
+    """Fresh client — not cached. Use for testing."""
+    if settings is None:
+        settings = get_settings()
+    opensearch_host = host or settings.opensearch.host
+    return OpenSearchClient(
+        host=opensearch_host,
         settings=settings,
     )

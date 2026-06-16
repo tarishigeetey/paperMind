@@ -4,7 +4,6 @@ from src.dependencies import OpenSearchDep
 from src.schemas.api.search import SearchHit, SearchRequest, SearchResponse
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/search", tags=["search"])
 
 
@@ -13,34 +12,24 @@ async def search_papers(
     request: SearchRequest,
     opensearch_client: OpenSearchDep,
 ) -> SearchResponse:
-    """
-    Search papers using BM25 scoring in OpenSearch.
-
-    Searches across:
-    - title (3x boost)
-    - abstract (2x boost)
-    - authors (1x boost)
-
-    Results ranked by BM25 relevance score by default.
-    Set latest_papers=true to sort by publication date instead.
-    """
+    """BM25 search — now searches chunk index."""
     try:
-        # Health check first — return 503 if search is unavailable
-        # Better than letting the search fail with a cryptic error
         if not opensearch_client.health_check():
-            raise HTTPException(status_code=503, detail="Search service is currently unavailable")
+            raise HTTPException(
+                status_code=503,
+                detail="Search service unavailable",
+            )
 
-        logger.info(f"Search: '{request.query}' (size={request.size}, latest={request.latest_papers})")
-
-        results = opensearch_client.search_papers(
+        results = opensearch_client.search_unified(
             query=request.query,
+            query_embedding=None,  # BM25 only — no embedding
             size=request.size,
             from_=request.from_,
             categories=request.categories,
-            latest_papers=request.latest_papers,
+            latest=request.latest_papers,
+            use_hybrid=False,  # BM25 only
         )
 
-        # Convert raw dicts to typed SearchHit objects
         hits = [
             SearchHit(
                 arxiv_id=hit.get("arxiv_id", ""),
@@ -63,7 +52,7 @@ async def search_papers(
         )
 
     except HTTPException:
-        raise  # re-raise our own HTTP exceptions unchanged
+        raise
     except Exception as e:
         logger.error(f"Search error: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
