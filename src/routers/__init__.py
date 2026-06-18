@@ -1,3 +1,6 @@
-from src.routers import papers, ping, search
+"""Router modules for the RAG API."""
 
-__all__ = ["ping", "papers", "search"]
+# Import all available routers
+from . import hybrid_search, papers, ping
+
+__all__ = ["papers", "ping", "hybrid_search"]
