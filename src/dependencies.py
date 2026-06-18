@@ -46,14 +46,9 @@ def get_arxiv_client(request: Request) -> ArxivClient:
 def get_pdf_parser(request: Request) -> PDFParserService:
     return request.app.state.pdf_parser
 
-
-def get_embeddings_client(request: Request) -> JinaEmbeddingsClient:
-    """
-    Pull Jina embeddings client from app.state.
-    Stored there at startup in lifespan().
-    """
-    return request.app.state.embeddings_client
-
+def get_embeddings_service(request: Request) -> JinaEmbeddingsClient:
+    """Get embeddings service from the request state."""
+    return request.app.state.embeddings_service
 
 # ── Type aliases ──────────────────────────────────────────────────
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -62,4 +57,4 @@ SessionDep = Annotated[Session, Depends(get_db_session)]
 OpenSearchDep = Annotated[OpenSearchClient, Depends(get_opensearch_client)]
 ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
-EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_client)]
+EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
