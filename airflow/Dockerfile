@@ -13,6 +13,8 @@ RUN apt-get update && \
         libpq-dev \
         poppler-utils \
         tesseract-ocr \
+        libgl1 \
+        libglib2.0-0 \
         && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r -g 50000 airflow && \

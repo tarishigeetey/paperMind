@@ -5,12 +5,6 @@ from typing import Any, Tuple
 
 sys.path.insert(0, "/opt/airflow")
 
-from src.db.factory import make_database
-from src.services.arxiv.factory import make_arxiv_client
-from src.services.metadata_fetcher import make_metadata_fetcher
-from src.services.opensearch.factory import make_opensearch_client
-from src.services.pdf_parser.factory import make_pdf_parser_service
-
 logger = logging.getLogger(__name__)
 
 
@@ -20,6 +14,14 @@ def get_cached_services() -> Tuple[Any, Any, Any, Any, Any]:
 
     :returns: Tuple of (arxiv_client, pdf_parser, database, metadata_fetcher, opensearch_client)
     """
+    # Heavy imports moved here — only run when a task actually calls this,
+    # never during Airflow's DAG-file parse (which is what was timing out)
+    from src.db.factory import make_database
+    from src.services.arxiv.factory import make_arxiv_client
+    from src.services.metadata_fetcher import make_metadata_fetcher
+    from src.services.opensearch.factory import make_opensearch_client
+    from src.services.pdf_parser.factory import make_pdf_parser_service
+
     logger.info("Initializing services (cached with lru_cache)")
 
     arxiv_client = make_arxiv_client()

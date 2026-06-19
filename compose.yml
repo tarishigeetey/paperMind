@@ -114,6 +114,7 @@ services:
       - AIRFLOW_HOME=/opt/airflow
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
       - OPENSEARCH__HOST=http://opensearch:9200
+      - JINA_API_KEY=${JINA_API_KEY}
       - PYTHONPATH=/opt/airflow/src
     volumes:
       - ./airflow/dags:/opt/airflow/dags
