@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.28.1",
     "docling>=2.43.0",
     "python-dateutil>=2.9.0.post0",
+    "gradio>=6.19.0",
 ]
 readme = "README.md"
 
