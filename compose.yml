@@ -96,7 +96,7 @@ services:
       - rag-network
 
   airflow:
-    build: 
+    build:
       context: ./airflow
       dockerfile: Dockerfile
     container_name: rag-airflow
@@ -206,10 +206,10 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
       - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=changeThisToASecureRandomString32CharsMin  
-      - SALT=changeThisToAnotherSecureRandomString 
-      - TELEMETRY_ENABLED=false  
-      - NEXT_PUBLIC_SIGN_UP_DISABLED=false 
+      - NEXTAUTH_SECRET=changeThisToASecureRandomString32CharsMin
+      - SALT=changeThisToAnotherSecureRandomString
+      - TELEMETRY_ENABLED=false
+      - NEXT_PUBLIC_SIGN_UP_DISABLED=false
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3000/api/public/health || exit 1"]
       interval: 30s
@@ -253,4 +253,4 @@ volumes:
 
 networks:
   rag-network:
-    driver: bridge 
+    driver: bridge

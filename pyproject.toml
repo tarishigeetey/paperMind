@@ -17,6 +17,7 @@ dependencies = [
     "docling>=2.43.0",
     "python-dateutil>=2.9.0.post0",
     "gradio>=6.19.0",
+    "redis>=8.0.1",
 ]
 readme = "README.md"
 
