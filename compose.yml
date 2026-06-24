@@ -104,6 +104,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -115,6 +119,7 @@ services:
       - OPENSEARCH_HOST=http://opensearch:9200
       - OPENSEARCH__HOST=http://opensearch:9200
       - OLLAMA_HOST=http://ollama:11434
+      - LANGFUSE__HOST=http://langfuse:3000
       - REDIS__HOST=redis
     volumes:
       - ./airflow/dags:/opt/airflow/dags

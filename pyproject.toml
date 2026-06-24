@@ -16,8 +16,10 @@ dependencies = [
     "httpx>=0.28.1",
     "docling>=2.43.0",
     "python-dateutil>=2.9.0.post0",
-    "gradio>=6.19.0",
-    "redis>=8.0.1",
+    "sentence-transformers>=5.1.0",
+    "gradio>=4.0.0",
+    "langfuse>=2.0.0,<3.0.0",
+    "redis>=6.4.0",
 ]
 readme = "README.md"
 
@@ -57,5 +59,3 @@ env_files = ".env.test"
 [tool.mypy]
 explicit_package_bases = true
 ignore_errors = true
-
-
