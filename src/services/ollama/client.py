@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
+from langchain_ollama import ChatOllama
 from src.config import Settings
 from src.exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
 from src.schemas.ollama import RAGResponse
@@ -232,6 +233,10 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Error generating RAG answer: {e}")
             raise OllamaException(f"Failed to generate RAG answer: {e}")
+
+    def get_langchain_model(self, model: str, temperature: float = 0.0) -> ChatOllama:
+        """Return a LangChain ChatOllama instance for use with structured output."""
+        return ChatOllama(base_url=self.base_url, model=model, temperature=temperature)
 
     async def generate_rag_answer_stream(
         self,
