@@ -32,7 +32,7 @@ class ArxivSettings(BaseConfigSettings):
     pdf_cache_dir: str = "./data/arxiv_pdfs"
     rate_limit_delay: float = 3.0
     timeout_seconds: int = 30
-    max_results: int = 3
+    max_results: int = 15
     search_category: str = "cs.AI"
     download_max_retries: int = 3
     download_retry_delay_base: float = 5.0
