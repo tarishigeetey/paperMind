@@ -13,6 +13,8 @@ from src.services.pdf_parser.parser import PDFParserService
 from src.services.ollama.client import OllamaClient
 from src.services.cache.client import CacheClient
 from src.services.langfuse.client import LangfuseTracer
+from src.services.agents.agentic_rag import AgenticRAGService
+from src.services.agents.factory import make_agentic_rag_service
 
 
 @lru_cache
@@ -69,6 +71,31 @@ def get_cache_client(request: Request) -> CacheClient | None:
     return getattr(request.app.state, "cache_client", None)
 
 
+def get_agentic_rag_service(
+    # Each of these *Dep types is itself a Depends(...) chain defined
+    # earlier in dependencies.py — FastAPI resolves the whole tree
+    # automatically when a request comes in.
+    opensearch: OpenSearchDep,
+    ollama: OllamaDep,
+    embeddings: EmbeddingsDep,
+    langfuse: LangfuseDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AgenticRAGService:
+    """Get agentic RAG service.
+
+    This is the ONLY place AgenticRAGService gets constructed for the
+    whole app. It calls the factory from Episode 10 (make_agentic_rag_service),
+    not the raw AgenticRAGService(...) constructor directly.
+    """
+    return make_agentic_rag_service(
+        opensearch_client=opensearch,
+        ollama_client=ollama,
+        embeddings_client=embeddings,
+        langfuse_tracer=langfuse,
+        model=settings.ollama_model,
+    )
+
+
 # ── Type aliases ──────────────────────────────────────────────────
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DatabaseDep = Annotated[BaseDatabase, Depends(get_database)]
@@ -80,3 +107,4 @@ EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 OllamaDep = Annotated[OllamaClient, Depends(get_ollama_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
+AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]
