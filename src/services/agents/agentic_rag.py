@@ -1,5 +1,5 @@
 """
-AgenticRAGService — wires all 6 nodes into one runnable StateGraph.
+AgenticRAGService — wires all 7 nodes into one runnable StateGraph.
 
 === JAVA COMPARISON: the big picture ===
 Every episode so far built ONE PIECE (a node, a model, a prompt). This
@@ -20,9 +20,10 @@ Spring Batch Job out of individual Steps:
                 .from(retrieveStep()).next(toolRetrieveStep())
                 .next(gradeDocumentsStep())
                 .next(decideAfterGrading())        // conditional branching
-                    .on("RELEVANT").to(generateAnswerStep()).end()
+                    .on("RELEVANT").to(generateAnswerStep())
                     .on("NOT_RELEVANT").to(rewriteQueryStep())
                 .from(rewriteQueryStep()).next(retrieveStep())  // LOOP back
+                .from(generateAnswerStep()).next(verifyCitationsStep()).end()
                 .build();
         }
     }
@@ -82,6 +83,7 @@ from .nodes import (
     ainvoke_out_of_scope_step,
     ainvoke_retrieve_step,
     ainvoke_rewrite_query_step,
+    ainvoke_verify_citations_step,
     continue_after_guardrail,
 )
 from .state import AgentState
@@ -231,6 +233,12 @@ class AgenticRAGService:
         workflow.add_node("rewrite_query", ainvoke_rewrite_query_step)
         workflow.add_node("generate_answer", ainvoke_generate_answer_step)
 
+        # NEW NODE: citation verification, runs after generate_answer,
+        # before END. Detects and corrects hallucinated citations using
+        # the actual retrieved context as ground truth (see
+        # verify_citations_node.py for the full implementation).
+        workflow.add_node("verify_citations", ainvoke_verify_citations_step)
+
         # ============================================================
         # ADD EDGES — the actual flow control
         # ============================================================
@@ -263,7 +271,10 @@ class AgenticRAGService:
         )
 
         # --- Out of scope → END (terminal node, Episode 5) ---
-        # Java: .end();  — this branch of the flow terminates here
+        # Java: .end();  — this branch of the flow terminates here.
+        # NOTE: out_of_scope does NOT go through verify_citations — a
+        # rejection message never contains citations to verify, so
+        # routing it straight to END avoids a pointless no-op check.
         workflow.add_edge("out_of_scope", END)
 
         # --- Retrieve → conditional branch using LangGraph's BUILT-IN ---
@@ -343,8 +354,14 @@ class AgenticRAGService:
         # exactly this kind of explicit "loop back" transition.
         workflow.add_edge("rewrite_query", "retrieve")
 
-        # --- After answer generation → done ---
-        workflow.add_edge("generate_answer", END)
+        # --- After answer generation → verify citations, THEN done ---
+        # CHANGED: this used to go straight to END. Now it routes
+        # through verify_citations first — the hallucination-correction
+        # node — before the request actually completes. Every generated
+        # answer gets checked; out_of_scope rejections (above) skip this
+        # entirely since they never contain citations.
+        workflow.add_edge("generate_answer", "verify_citations")
+        workflow.add_edge("verify_citations", END)
 
         # === Compile — converts the builder into a runnable object ===
         # Java: Job agenticRagJob = jobBuilder.build();
@@ -578,7 +595,8 @@ class AgenticRAGService:
             # LangGraph takes it from here: starts at START, runs
             # guardrail, follows whichever edges the conditional
             # functions select, loops through retrieve/grade/rewrite as
-            # needed, and returns the FINAL AgentState once it reaches END.
+            # needed, runs verify_citations after generate_answer, and
+            # returns the FINAL AgentState once it reaches END.
             #
             # Java equivalent:
             #     JobExecution execution = jobLauncher.run(agenticRagJob, jobParameters);
@@ -627,10 +645,10 @@ class AgenticRAGService:
             # === STEP 8: Build the final response dict ===
             # Java: return new AgentRagResult(query, answer, sources, ...);
             # Python here just returns a plain dict — the FastAPI
-            # router (next episode) will validate/serialize this into
-            # a proper Pydantic response model for the actual HTTP
-            # response, similar to a Java @Service returning a domain
-            # object that a @RestController then wraps in ResponseEntity.
+            # router will validate/serialize this into a proper
+            # Pydantic response model for the actual HTTP response,
+            # similar to a Java @Service returning a domain object
+            # that a @RestController then wraps in ResponseEntity.
             return {
                 "query": query,
                 "answer": answer,
@@ -668,14 +686,15 @@ class AgenticRAGService:
             }
 
         WHY messages[-1] (the LAST message) IS ALWAYS THE ANSWER:
-        Recall both terminal nodes — out_of_scope_node (Episode 5) and
-        generate_answer_node (Episode 9) — BOTH return their result as
+        Recall both terminal paths — out_of_scope_node (Episode 5) and
+        generate_answer_node → verify_citations_node (Episode 9 + the
+        hallucination fix) — ALL return their result as
         `{"messages": [AIMessage(content=...)]}`. Whichever path the
         graph took, the LAST message in the final state IS the
         user-facing answer, by construction. This function doesn't
-        need an if/else for "was it a rejection or a real answer" —
-        the append-only messages design (add_messages reducer,
-        Episode 2) makes both cases uniform.
+        need an if/else for "was it a rejection, a generated answer,
+        or a corrected answer" — the append-only messages design
+        (add_messages reducer, Episode 2) makes all cases uniform.
         """
         messages = result.get("messages", [])
         if not messages:
