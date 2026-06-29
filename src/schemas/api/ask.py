@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, confloat
 
 
 class AskRequest(BaseModel):
@@ -43,3 +43,31 @@ class AskResponse(BaseModel):
                 "search_mode": "hybrid",
             }
         }
+
+
+class AgenticAskResponse(BaseModel):
+    """Response model for agentic RAG question answering."""
+
+    query: str = Field(..., description="Original user question")
+    answer: str = Field(..., description="Generated answer from LLM")
+    sources: List[str] = Field(default_factory=list, description="PDF URLs of source papers")
+    chunks_used: int = Field(..., description="Number of chunks used for generation")
+    search_mode: str = Field(..., description="Search mode used: bm25 or hybrid")
+    reasoning_steps: List[str] = Field(default_factory=list, description="Agent reasoning steps")
+    retrieval_attempts: int = Field(0, description="Number of retrieval attempts made")
+    trace_id: Optional[str] = Field(None, description="Langfuse trace ID for feedback")
+
+
+class FeedbackRequest(BaseModel):
+    """Request model for submitting feedback on an agentic RAG response."""
+
+    trace_id: str = Field(..., description="Langfuse trace ID of the response to rate")
+    score: float = Field(..., description="Score between 0 and 1", ge=0.0, le=1.0)
+    comment: Optional[str] = Field(None, description="Optional feedback comment")
+
+
+class FeedbackResponse(BaseModel):
+    """Response model for feedback submission."""
+
+    success: bool = Field(..., description="Whether feedback was recorded successfully")
+    message: str = Field(..., description="Status message")
