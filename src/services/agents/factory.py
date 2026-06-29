@@ -62,6 +62,7 @@ def make_agentic_rag_service(
     langfuse_tracer: Optional[LangfuseTracer] = None,
     top_k: int = 3,
     use_hybrid: bool = True,
+    model: str = "llama3.2:1b",
 ) -> AgenticRAGService:
     """
     Create AgenticRAGService with dependency injection.
@@ -119,6 +120,7 @@ def make_agentic_rag_service(
     graph_config = GraphConfig(
         top_k=top_k,
         use_hybrid=use_hybrid,
+        model=model,
     )
 
     # Construct and return the fully-wired service. This is the ONLY
