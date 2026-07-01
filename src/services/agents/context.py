@@ -54,16 +54,16 @@ Java mapping:
 # Java: @AllArgsConstructor @Getter (Lombok) on a POJO
 from dataclasses import dataclass
 
-# LangfuseSpan = a single trace span object from the Langfuse SDK
-# Java: like a Micrometer Span / OpenTelemetry Span object
-from langfuse._client.span import LangfuseSpan
-
 # TYPE_CHECKING = a Python trick to avoid circular imports at runtime
 # while still letting your IDE/type-checker see the real type.
 # Java has no direct equivalent — Java's import system doesn't have
 # this circular-import problem the same way, since Java resolves
 # types at compile time across the whole classpath.
 from typing import TYPE_CHECKING, Optional
+
+# LangfuseSpan = a single trace span object from the Langfuse SDK
+# Java: like a Micrometer Span / OpenTelemetry Span object
+from langfuse._client.span import LangfuseSpan
 
 # These are OUR existing service clients — built in earlier weeks (Ollama,
 # OpenSearch) and this week (LangfuseTracer for observability).

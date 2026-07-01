@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from langchain_ollama import ChatOllama
+
 from src.config import Settings
 from src.exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
 from src.schemas.ollama import RAGResponse

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from pydantic import ValidationError
+
 from src.schemas.ollama import RAGResponse
 
 

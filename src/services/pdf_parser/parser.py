@@ -4,6 +4,7 @@ from typing import Optional
 
 from src.exceptions import PDFParsingException, PDFValidationError
 from src.schemas.pdf_parser.models import PdfContent
+
 from .docling import DoclingParser
 
 logger = logging.getLogger(__name__)

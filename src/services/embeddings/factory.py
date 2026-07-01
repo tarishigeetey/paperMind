@@ -1,6 +1,7 @@
 from typing import Optional
 
 from src.config import Settings, get_settings
+
 from .jina_client import JinaEmbeddingsClient
 
 

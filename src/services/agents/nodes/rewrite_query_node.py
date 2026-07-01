@@ -55,7 +55,6 @@ from typing import Dict, List
 # unusual way (see STEP 4 below): we're using it to represent the
 # REWRITTEN query, not literally something the human typed.
 from langchain_core.messages import HumanMessage
-
 from langgraph.runtime import Runtime
 
 # BaseModel, Field = same Pydantic building blocks from models.py

@@ -1,5 +1,7 @@
 import logging
+
 from fastapi import APIRouter, HTTPException
+
 from src.dependencies import OpenSearchDep
 from src.schemas.api.search import SearchHit, SearchRequest, SearchResponse
 

@@ -58,7 +58,6 @@ from typing import Dict, Union
 # Here, AIMessage carries `tool_calls` — a list of structured requests
 # the LLM (or in this case, OUR CODE on the LLM's behalf) wants executed
 from langchain_core.messages import AIMessage
-
 from langgraph.runtime import Runtime
 
 from ..context import Context

@@ -5,6 +5,7 @@ from datetime import timedelta
 from typing import Optional
 
 import redis
+
 from src.config import RedisSettings
 from src.schemas.api.ask import AskRequest, AskResponse
 

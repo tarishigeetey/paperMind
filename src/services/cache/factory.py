@@ -1,6 +1,7 @@
 import logging
 
 import redis
+
 from src.config import Settings
 from src.services.cache.client import CacheClient
 

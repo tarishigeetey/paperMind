@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from src.services.embeddings.jina_client import JinaEmbeddingsClient
 from src.services.opensearch.client import OpenSearchClient
+
 from .text_chunker import TextChunker
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from src.schemas.api.ask import AskRequest, AskResponse
 
