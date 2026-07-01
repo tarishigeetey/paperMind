@@ -1,4 +1,3 @@
-# src/services/telegram/bot.py
 import logging
 from typing import Optional
 
