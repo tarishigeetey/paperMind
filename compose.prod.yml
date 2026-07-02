@@ -1,0 +1,188 @@
+# compose.prod.yml
+#
+# Production stack — Episode 9.3 (Langfuse Cloud swap)
+#
+# What changed vs compose.yml:
+#   REMOVED: langfuse-web, langfuse-worker, langfuse-postgres,
+#            langfuse-redis, langfuse-minio, clickhouse  (6 containers)
+#   REMOVED: opensearch-dashboards  (dev tool, not needed in prod)
+#   CHANGED: api LANGFUSE_HOST env var → https://cloud.langfuse.com
+#   KEPT:    api, postgres, redis, opensearch, airflow, ollama
+#
+# After Episode 9.1 (Groq): ollama service will be removed
+# After Episode 9.2 (pgvector): opensearch service will be removed
+#
+# Java analogy: this is your production application.properties
+# vs the local dev application-local.properties — same app, different wiring.
+#
+# Usage:
+#   docker compose -f compose.prod.yml up -d
+#   docker compose -f compose.prod.yml down
+#   docker compose -f compose.prod.yml logs -f api
+
+services:
+
+  api:
+    build: .
+    container_name: rag-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    env_file:
+      - .env
+    environment:
+      - OPENSEARCH_HOST=http://opensearch:9200
+      - OPENSEARCH__HOST=http://opensearch:9200
+      - OLLAMA_HOST=http://ollama:11434
+      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+      # Episode 9.3: was http://langfuse-web:3000 (self-hosted container)
+      #              now https://cloud.langfuse.com (Langfuse Cloud)
+      # LANGFUSE__PUBLIC_KEY and LANGFUSE__SECRET_KEY come from .env (cloud credentials)
+      - LANGFUSE__HOST=https://cloud.langfuse.com
+      - REDIS__HOST=redis
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    environment:
+      - POSTGRES_DB=rag_db
+      - POSTGRES_USER=rag_user
+      - POSTGRES_PASSWORD=rag_password
+      - POSTGRES_HOST_AUTH_METHOD=password
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  opensearch:
+    # Episode 9.2: this service will be removed once pgvector is wired up
+    image: opensearchproject/opensearch:2.19.0
+    container_name: rag-opensearch
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - DISABLE_SECURITY_PLUGIN=true
+      - bootstrap.memory_lock=true
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  airflow:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: rag-airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW_HOME=/opt/airflow
+      - PYTHONPATH=/opt/airflow/src
+      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+      - OPENSEARCH_HOST=http://opensearch:9200
+      - OPENSEARCH__HOST=http://opensearch:9200
+      - OLLAMA_HOST=http://ollama:11434
+      - REDIS__HOST=redis
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - rag-network
+
+  ollama:
+    # Episode 9.1: this service will be removed once Groq client is wired up
+    image: ollama/ollama:0.11.2
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - rag-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  opensearch_data:
+  ollama_data:
+  airflow_logs:
+
+networks:
+  rag-network:
+    driver: bridge
