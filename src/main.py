@@ -17,6 +17,7 @@ from src.services.ollama.factory import make_ollama_client
 from src.services.opensearch.factory import make_opensearch_client
 from src.services.pdf_parser.factory import make_pdf_parser_service
 from src.services.telegram.factory import make_telegram_service
+from src.services.groq.factory import make_groq_client
 
 # Setup logging
 logging.basicConfig(
@@ -68,7 +69,9 @@ async def lifespan(app: FastAPI):
     app.state.arxiv_client = make_arxiv_client()
     app.state.pdf_parser = make_pdf_parser_service()
     app.state.embeddings_service = make_embeddings_service()
-    app.state.ollama_client = make_ollama_client()
+    # app.state.ollama_client = make_ollama_client()
+    app.state.llm_client = make_groq_client()
+    app.state.ollama_client = app.state.llm_client
     app.state.langfuse_tracer = make_langfuse_tracer()
     app.state.cache_client = make_cache_client(settings)
     logger.info("Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, Ollama, Langfuse, Cache")

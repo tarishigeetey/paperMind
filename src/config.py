@@ -190,6 +190,12 @@ class Settings(BaseConfigSettings):
     ollama_model: str = "llama3.2:1b"
     ollama_timeout: int = 300
 
+    # Groq
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.1-8b-instant"
+    groq_timeout: int = 30
+    llm_provider: str = "groq"
+
     # Jina AI embeddings API key
     # Get free key at jina.ai — 1M tokens free per month
     jina_api_key: str = ""
