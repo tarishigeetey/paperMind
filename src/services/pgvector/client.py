@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
 from src.config import Settings
 
 logger = logging.getLogger(__name__)

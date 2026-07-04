@@ -1,6 +1,8 @@
 from typing import Optional
+
 from src.config import Settings, get_settings
 from src.services.embeddings.factory import make_embeddings_client
+
 from .hybrid_indexer import HybridIndexingService
 from .text_chunker import TextChunker
 

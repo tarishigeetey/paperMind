@@ -12,12 +12,12 @@ from src.routers.ask import ask_router, stream_router
 from src.services.arxiv.factory import make_arxiv_client
 from src.services.cache.factory import make_cache_client
 from src.services.embeddings.factory import make_embeddings_service
+from src.services.groq.factory import make_groq_client
 from src.services.langfuse.factory import make_langfuse_tracer
 from src.services.ollama.factory import make_ollama_client
-from src.services.pgvector.factory import make_pgvector_client
 from src.services.pdf_parser.factory import make_pdf_parser_service
+from src.services.pgvector.factory import make_pgvector_client
 from src.services.telegram.factory import make_telegram_service
-from src.services.groq.factory import make_groq_client
 
 # Setup logging
 logging.basicConfig(

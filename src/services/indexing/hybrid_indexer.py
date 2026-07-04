@@ -57,9 +57,7 @@ class HybridIndexingService:
                 title=paper_data.get("title", ""),
                 abstract=paper_data.get("abstract", ""),
                 # raw_text from PDF parser, fallback to full_text
-                full_text=paper_data.get(
-                    "raw_text", paper_data.get("full_text", "")
-                ),
+                full_text=paper_data.get("raw_text", paper_data.get("full_text", "")),
                 arxiv_id=arxiv_id,
                 paper_id=paper_id,
                 sections=paper_data.get("sections"),
@@ -84,10 +82,7 @@ class HybridIndexingService:
             )
 
             if len(embeddings) != len(chunks):
-                logger.error(
-                    f"Embedding count mismatch for {arxiv_id}: "
-                    f"{len(embeddings)} != {len(chunks)}"
-                )
+                logger.error(f"Embedding count mismatch for {arxiv_id}: {len(embeddings)} != {len(chunks)}")
                 return {
                     "chunks_created": len(chunks),
                     "chunks_indexed": 0,
@@ -122,20 +117,16 @@ class HybridIndexingService:
                     "published_date": paper_data.get("published_date"),
                 }
 
-                chunks_with_embeddings.append({
-                    "chunk_data": chunk_data,
-                    "embedding": embedding,
-                })
+                chunks_with_embeddings.append(
+                    {
+                        "chunk_data": chunk_data,
+                        "embedding": embedding,
+                    }
+                )
 
-            results = self.opensearch_client.bulk_index_chunks(
-                chunks_with_embeddings
-            )
+            results = self.opensearch_client.bulk_index_chunks(chunks_with_embeddings)
 
-            logger.info(
-                f"Indexed {arxiv_id}: "
-                f"{results['success']} chunks OK, "
-                f"{results['failed']} failed"
-            )
+            logger.info(f"Indexed {arxiv_id}: {results['success']} chunks OK, {results['failed']} failed")
 
             return {
                 "chunks_created": len(chunks),
@@ -189,14 +180,11 @@ class HybridIndexingService:
             total_stats["total_errors"] += stats["errors"]
 
         logger.info(
-            f"Batch complete: {total_stats['papers_processed']} papers, "
-            f"{total_stats['total_chunks_indexed']} chunks indexed"
+            f"Batch complete: {total_stats['papers_processed']} papers, {total_stats['total_chunks_indexed']} chunks indexed"
         )
         return total_stats
 
-    async def reindex_paper(
-        self, arxiv_id: str, paper_data: Dict
-    ) -> Dict[str, int]:
+    async def reindex_paper(self, arxiv_id: str, paper_data: Dict) -> Dict[str, int]:
         """
         Reindex a paper — delete old chunks then index fresh.
         Used when paper content is updated (e.g. PDF finally parsed).

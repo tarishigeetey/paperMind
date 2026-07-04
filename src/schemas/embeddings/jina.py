@@ -16,12 +16,13 @@ class JinaEmbeddingRequest(BaseModel):
     it uses different representations for documents vs queries
     to maximise retrieval accuracy. Asymmetric embedding.
     """
+
     model: str = "jina-embeddings-v3"
-    task: str = "retrieval.passage"   # or "retrieval.query"
-    dimensions: int = 1024            # 1024 = best accuracy/speed tradeoff
-    late_chunking: bool = False       # we handle chunking ourselves
+    task: str = "retrieval.passage"  # or "retrieval.query"
+    dimensions: int = 1024  # 1024 = best accuracy/speed tradeoff
+    late_chunking: bool = False  # we handle chunking ourselves
     embedding_type: str = "float"
-    input: List[str]                  # texts to embed
+    input: List[str]  # texts to embed
 
 
 class JinaEmbeddingResponse(BaseModel):
@@ -33,8 +34,8 @@ class JinaEmbeddingResponse(BaseModel):
     - index: int (position in input list)
     - object: "embedding"
     """
+
     model: str
     object: str = "list"
-    usage: Dict[str, int]   # {"total_tokens": N, "prompt_tokens": N}
-    data: List[Dict]        # [{"embedding": [...], "index": 0}, ...]
-    
+    usage: Dict[str, int]  # {"total_tokens": N, "prompt_tokens": N}
+    data: List[Dict]  # [{"embedding": [...], "index": 0}, ...]

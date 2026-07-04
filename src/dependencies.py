@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated, Generator, Any
+from typing import Annotated, Any, Generator
 
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
@@ -11,11 +11,11 @@ from src.services.agents.factory import make_agentic_rag_service
 from src.services.arxiv.client import ArxivClient
 from src.services.cache.client import CacheClient
 from src.services.embeddings.jina_client import JinaEmbeddingsClient
+from src.services.groq.factory import make_groq_client
 from src.services.langfuse.client import LangfuseTracer
 from src.services.ollama.client import OllamaClient
 from src.services.opensearch.client import OpenSearchClient
 from src.services.pdf_parser.parser import PDFParserService
-from src.services.groq.factory import make_groq_client
 
 
 @lru_cache

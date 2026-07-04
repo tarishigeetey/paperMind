@@ -19,6 +19,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from groq import AsyncGroq
+
 from src.config import Settings
 from src.exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
 from src.services.ollama.prompts import RAGPromptBuilder, ResponseParser

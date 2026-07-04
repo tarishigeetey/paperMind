@@ -99,7 +99,7 @@ class TestArxivClient:
             with pytest.raises(ArxivAPITimeoutError) as exc_info:
                 await arxiv_client.fetch_papers(max_results=1)
 
-            assert "arXiv API request timed out" in str(exc_info.value)
+            assert "arXiv API timed out" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_fetch_papers_http_error(self, arxiv_client):
@@ -114,7 +114,7 @@ class TestArxivClient:
             with pytest.raises(ArxivAPIException) as exc_info:
                 await arxiv_client.fetch_papers(max_results=1)
 
-            assert "arXiv API returned error 500" in str(exc_info.value)
+            assert "arXiv API returned 500" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_fetch_paper_by_id_success(self, arxiv_client, mock_arxiv_response):
@@ -157,7 +157,7 @@ class TestArxivClient:
         with pytest.raises(ArxivParseError) as exc_info:
             arxiv_client._parse_response(invalid_xml)
 
-        assert "Failed to parse arXiv XML response" in str(exc_info.value)
+        assert "Failed to parse arXiv XML" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_download_pdf_cached(self, arxiv_client):

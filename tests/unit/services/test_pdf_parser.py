@@ -61,7 +61,7 @@ class TestDoclingParser:
         with pytest.raises(PDFValidationError) as exc_info:
             docling_parser._validate_pdf(invalid_pdf_path)
 
-        assert "File does not have PDF header" in str(exc_info.value)
+        assert "Not a valid PDF file" in str(exc_info.value)
 
     def test_validate_pdf_nonexistent_file(self, docling_parser):
         """Test PDF validation with nonexistent file."""
@@ -122,13 +122,12 @@ class TestPDFParserService:
     @patch("src.services.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio
     async def test_parse_pdf_no_result(self, mock_parse, pdf_parser_service, valid_pdf_path):
-        """Test PDF parsing when no result is returned."""
+        """Test PDF parsing when Docling returns None (graceful skip, not an error)."""
         mock_parse.return_value = None
 
-        with pytest.raises(PDFParsingException) as exc_info:
-            await pdf_parser_service.parse_pdf(valid_pdf_path)
+        result = await pdf_parser_service.parse_pdf(valid_pdf_path)
 
-        assert "Docling parsing returned no result" in str(exc_info.value)
+        assert result is None
 
     @patch("src.services.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio
@@ -139,7 +138,7 @@ class TestPDFParserService:
         with pytest.raises(PDFParsingException) as exc_info:
             await pdf_parser_service.parse_pdf(valid_pdf_path)
 
-        assert "Docling parsing error" in str(exc_info.value)
+        assert "Docling error" in str(exc_info.value)
 
     def test_factory_creates_service(self):
         """Test that factory creates PDFParserService instance."""

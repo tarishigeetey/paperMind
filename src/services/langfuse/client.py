@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from langfuse import get_client
+
 from src.config import Settings
 
 logger = logging.getLogger(__name__)

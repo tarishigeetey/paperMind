@@ -64,31 +64,38 @@ class DoclingParser:
         Three checks: file size, page count, PDF header.
         Fail fast — don't waste time on invalid files.
         """
-        # Check file is not empty
-        if pdf_path.stat().st_size == 0:
-            raise PDFValidationError(f"PDF file is empty: {pdf_path}")
+        try:
+            # Check file is not empty
+            if pdf_path.stat().st_size == 0:
+                raise PDFValidationError(f"PDF file is empty: {pdf_path}")
 
-        # Check file size limit
-        file_size = pdf_path.stat().st_size
-        if file_size > self.max_file_size_bytes:
-            raise PDFValidationError(
-                f"PDF too large: {file_size / 1024 / 1024:.1f}MB > {self.max_file_size_bytes / 1024 / 1024:.1f}MB limit"
-            )
+            # Check file size limit
+            file_size = pdf_path.stat().st_size
+            if file_size > self.max_file_size_bytes:
+                raise PDFValidationError(
+                    f"PDF too large: {file_size / 1024 / 1024:.1f}MB > {self.max_file_size_bytes / 1024 / 1024:.1f}MB limit"
+                )
 
-        # Check PDF magic bytes — first 5 bytes must be "%PDF-"
-        # A renamed .pdf file that isn't actually a PDF will fail here
-        with open(pdf_path, "rb") as f:
-            header = f.read(8)
-            if not header.startswith(b"%PDF-"):
-                raise PDFValidationError(f"Not a valid PDF file: {pdf_path}")
+            # Check PDF magic bytes — first 5 bytes must be "%PDF-"
+            # A renamed .pdf file that isn't actually a PDF will fail here
+            with open(pdf_path, "rb") as f:
+                header = f.read(8)
+                if not header.startswith(b"%PDF-"):
+                    raise PDFValidationError(f"Not a valid PDF file: {pdf_path}")
 
-        # Check page count using pypdfium2 — faster than loading full Docling
-        pdf_doc = pdfium.PdfDocument(str(pdf_path))
-        actual_pages = len(pdf_doc)
-        pdf_doc.close()
+            # Check page count using pypdfium2 — faster than loading full Docling
+            pdf_doc = pdfium.PdfDocument(str(pdf_path))
+            actual_pages = len(pdf_doc)
+            pdf_doc.close()
 
-        if actual_pages > self.max_pages:
-            raise PDFValidationError(f"PDF has {actual_pages} pages > {self.max_pages} page limit")
+            if actual_pages > self.max_pages:
+                raise PDFValidationError(f"PDF has {actual_pages} pages > {self.max_pages} page limit")
+
+        except PDFValidationError:
+            raise
+        except OSError as e:
+            # e.g. FileNotFoundError from stat()/open() on a missing path
+            raise PDFValidationError(f"Error validating PDF: {pdf_path}: {e}")
 
         return True
 
