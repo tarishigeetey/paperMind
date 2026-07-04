@@ -1,5 +1,6 @@
 from src.config import get_settings
 from src.services.arxiv.client import ArxivClient
+from src.services.s3.factory import make_s3_client
 
 
 def make_arxiv_client() -> ArxivClient:
@@ -9,4 +10,4 @@ def make_arxiv_client() -> ArxivClient:
     Called once at Airflow task startup.
     """
     settings = get_settings()
-    return ArxivClient(settings=settings.arxiv)
+    return ArxivClient(settings=settings.arxiv, s3_client=make_s3_client())

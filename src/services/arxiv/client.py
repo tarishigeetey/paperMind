@@ -18,6 +18,7 @@ from src.exceptions import (
     PDFDownloadTimeoutError,
 )
 from src.schemas.arxiv.paper import ArxivPaper
+from src.services.s3.client import S3Client
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +29,16 @@ class ArxivClient:
     Like a Spring @Service wrapping a WebClient.
     """
 
-    def __init__(self, settings: ArxivSettings):
+    def __init__(self, settings: ArxivSettings, s3_client: Optional[S3Client] = None):
         self._settings = settings
         # Track last request time for rate limiting
         self._last_request_time: Optional[float] = None
+
+        # Episode 10.1: optional durable PDF storage. None (the default)
+        # means "local disk only" — same behavior as before this episode,
+        # which is why every existing test (constructing ArxivClient with
+        # just settings) still works unchanged.
+        self._s3_client = s3_client
 
     @cached_property
     def pdf_cache_dir(self) -> Path:
@@ -175,10 +182,14 @@ class ArxivClient:
 
     async def download_pdf(self, paper: ArxivPaper, force_download: bool = False) -> Optional[Path]:
         """
-        Download PDF for a paper to local cache.
+        Download PDF for a paper to local cache, with S3 as durable backing storage.
+
+        Lookup order (Episode 10.1): local disk -> S3 -> arXiv itself. Local
+        disk is a disposable scratch cache (lost on every redeploy); S3 is
+        the durable source of truth once a paper has been fetched at least
+        once, so a redeploy doesn't mean re-downloading everything from arXiv.
 
         Returns the path to the downloaded file, or None if failed.
-        Uses caching — won't re-download if file already exists.
         """
         if not paper.pdf_url:
             logger.error(f"No PDF URL for paper {paper.arxiv_id}")
@@ -192,9 +203,34 @@ class ArxivClient:
             logger.info(f"Using cached PDF: {pdf_path.name}")
             return pdf_path
 
-        if await self._download_with_retry(paper.pdf_url, pdf_path):
-            return pdf_path
-        return None
+        s3_key = self._get_s3_key(paper.arxiv_id)
+
+        # Second cache tier: S3. Only worth checking if we're not forcing
+        # a fresh download and an S3 client was actually configured.
+        if self._s3_client is not None and not force_download:
+            try:
+                if self._s3_client.object_exists(s3_key):
+                    self._s3_client.download_file(s3_key, pdf_path)
+                    logger.info(f"Restored PDF from S3: {pdf_path.name}")
+                    return pdf_path
+            except Exception as e:
+                # S3 being unavailable shouldn't block us from just
+                # downloading from arXiv instead — degrade, don't fail.
+                logger.warning(f"S3 lookup failed for {s3_key}, falling back to arXiv: {e}")
+
+        if not await self._download_with_retry(paper.pdf_url, pdf_path):
+            return None
+
+        if self._s3_client is not None:
+            try:
+                self._s3_client.upload_file(pdf_path, s3_key)
+            except Exception as e:
+                # Same reasoning: a failed upload shouldn't fail the whole
+                # download — the caller still has a valid local pdf_path to
+                # parse, we just won't have a durable copy this time.
+                logger.warning(f"Failed to upload {pdf_path.name} to S3, continuing without it: {e}")
+
+        return pdf_path
 
     # ── Private helper methods ─────────────────────────────────────
 
@@ -217,6 +253,11 @@ class ArxivClient:
         # "2401.00001" → "2401.00001.pdf"
         safe_filename = arxiv_id.replace("/", "_") + ".pdf"
         return self.pdf_cache_dir / safe_filename
+
+    def _get_s3_key(self, arxiv_id: str) -> str:
+        """Build the S3 key for a paper's PDF — same filename, under a pdfs/ prefix."""
+        safe_filename = arxiv_id.replace("/", "_") + ".pdf"
+        return f"pdfs/{safe_filename}"
 
     def _parse_response(self, xml_data: str) -> List[ArxivPaper]:
         """

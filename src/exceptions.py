@@ -75,6 +75,19 @@ class OpenSearchException(Exception):
     """Base exception for OpenSearch errors."""
 
 
+# ── S3 exceptions (Episode 10.1) ───────────────────────────────────
+class S3Exception(Exception):
+    """Base exception for S3 storage errors."""
+
+
+class S3UploadError(S3Exception):
+    """Failed to upload an object to S3."""
+
+
+class S3DownloadError(S3Exception):
+    """Failed to download an object from S3."""
+
+
 # ── LLM exceptions (placeholder — Week 5) ─────────────────────────
 class LLMException(Exception):
     """Base exception for LLM errors."""

@@ -158,6 +158,32 @@ class RedisSettings(BaseConfigSettings):
     ttl_hours: int = 6  # Cache TTL in hours
 
 
+class S3Settings(BaseConfigSettings):
+    """
+    S3 config for durable PDF storage (Episode 10.1).
+
+    NOTE: unlike every other *Settings class here, this does NOT use
+    env_prefix + "__" nesting. Instead each field points at the exact
+    env var name boto3/Terraform/GitHub Actions already expect
+    (AWS_ACCESS_KEY_ID, etc.) via validation_alias — so the same .env
+    values work unmodified once we wire up Terraform (ep10.3) and the
+    GitHub Actions deploy pipeline (ep10.4), instead of needing a
+    second, paperMind-specific name for the same credential.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    bucket_name: str = Field(default="", validation_alias="S3_BUCKET_NAME")
+    region: str = Field(default="us-east-1", validation_alias="AWS_REGION")
+    access_key_id: str = Field(default="", validation_alias="AWS_ACCESS_KEY_ID")
+    secret_access_key: str = Field(default="", validation_alias="AWS_SECRET_ACCESS_KEY")
+
+
 class TelegramSettings(BaseConfigSettings):
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
@@ -210,6 +236,7 @@ class Settings(BaseConfigSettings):
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    s3: S3Settings = Field(default_factory=S3Settings)
 
     @field_validator("postgres_database_url")
     @classmethod

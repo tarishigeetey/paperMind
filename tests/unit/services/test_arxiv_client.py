@@ -178,6 +178,78 @@ class TestArxivClient:
             assert pdf_path is not None
             assert pdf_path.name == "2024.0001v1.pdf"
 
+    @pytest.fixture
+    def s3_paper(self):
+        return ArxivPaper(
+            arxiv_id="2024.0002v1",
+            title="S3 Test Paper",
+            authors=["Test Author"],
+            abstract="Test abstract",
+            categories=["cs.AI"],
+            published_date="2024-01-01T00:00:00Z",
+            pdf_url="http://arxiv.org/pdf/2024.0002v1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_download_pdf_restores_from_s3(self, s3_paper):
+        """Not on local disk, but present in S3 — should restore from S3, not hit arXiv."""
+        from src.config import ArxivSettings
+
+        settings = ArxivSettings(pdf_cache_dir="/tmp/test_arxiv_cache_s3_hit", rate_limit_delay=0.1, timeout_seconds=5)
+        mock_s3 = MagicMock()
+        mock_s3.object_exists.return_value = True
+        client = ArxivClient(settings, s3_client=mock_s3)
+
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch.object(client, "_download_with_retry", new_callable=AsyncMock) as mock_download,
+        ):
+            pdf_path = await client.download_pdf(s3_paper)
+
+            assert pdf_path is not None
+            mock_s3.object_exists.assert_called_once_with("pdfs/2024.0002v1.pdf")
+            mock_s3.download_file.assert_called_once_with("pdfs/2024.0002v1.pdf", pdf_path)
+            mock_download.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_download_pdf_falls_back_to_arxiv_and_uploads_to_s3(self, s3_paper):
+        """Not on local disk, not in S3 — should download from arXiv, then upload to S3."""
+        from src.config import ArxivSettings
+
+        settings = ArxivSettings(pdf_cache_dir="/tmp/test_arxiv_cache_s3_miss", rate_limit_delay=0.1, timeout_seconds=5)
+        mock_s3 = MagicMock()
+        mock_s3.object_exists.return_value = False
+        client = ArxivClient(settings, s3_client=mock_s3)
+
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch.object(client, "_download_with_retry", new_callable=AsyncMock, return_value=True) as mock_download,
+        ):
+            pdf_path = await client.download_pdf(s3_paper)
+
+            assert pdf_path is not None
+            mock_download.assert_called_once()
+            mock_s3.upload_file.assert_called_once_with(pdf_path, "pdfs/2024.0002v1.pdf")
+
+    @pytest.mark.asyncio
+    async def test_download_pdf_s3_failure_falls_back_to_arxiv(self, s3_paper):
+        """S3 lookup errors (e.g. bucket unreachable) shouldn't block downloading from arXiv."""
+        from src.config import ArxivSettings
+
+        settings = ArxivSettings(pdf_cache_dir="/tmp/test_arxiv_cache_s3_error", rate_limit_delay=0.1, timeout_seconds=5)
+        mock_s3 = MagicMock()
+        mock_s3.object_exists.side_effect = Exception("S3 unreachable")
+        client = ArxivClient(settings, s3_client=mock_s3)
+
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch.object(client, "_download_with_retry", new_callable=AsyncMock, return_value=True) as mock_download,
+        ):
+            pdf_path = await client.download_pdf(s3_paper)
+
+            assert pdf_path is not None
+            mock_download.assert_called_once()
+
     def test_rate_limiting(self, arxiv_client):
         """Test rate limiting delay calculation."""
         import time
