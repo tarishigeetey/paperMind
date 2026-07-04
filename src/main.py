@@ -14,7 +14,7 @@ from src.services.cache.factory import make_cache_client
 from src.services.embeddings.factory import make_embeddings_service
 from src.services.langfuse.factory import make_langfuse_tracer
 from src.services.ollama.factory import make_ollama_client
-from src.services.opensearch.factory import make_opensearch_client
+from src.services.pgvector.factory import make_pgvector_client
 from src.services.pdf_parser.factory import make_pdf_parser_service
 from src.services.telegram.factory import make_telegram_service
 from src.services.groq.factory import make_groq_client
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database connected")
 
     # Initialize search service
-    opensearch_client = make_opensearch_client()
+    opensearch_client = make_pgvector_client()
     app.state.opensearch_client = opensearch_client
 
     # Verify OpenSearch connectivity and create index if needed

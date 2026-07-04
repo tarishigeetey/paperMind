@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from src.db.factory import make_database
 from src.services.indexing.factory import make_hybrid_indexing_service
-from src.services.opensearch.factory import make_opensearch_client_fresh
+# from src.services.opensearch.factory import make_opensearch_client_fresh
 
 logger = logging.getLogger(__name__)
 

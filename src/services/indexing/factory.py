@@ -1,9 +1,6 @@
 from typing import Optional
-
 from src.config import Settings, get_settings
 from src.services.embeddings.factory import make_embeddings_client
-from src.services.opensearch.factory import make_opensearch_client_fresh
-
 from .hybrid_indexer import HybridIndexingService
 from .text_chunker import TextChunker
 
@@ -15,12 +12,12 @@ def make_hybrid_indexing_service(
     """
     Factory — creates HybridIndexingService with all dependencies.
 
-    Not cached — creates fresh instances each time.
-    Why? The embeddings client holds an httpx connection that can
-    go stale. Fresh client per Airflow task run is safer.
+    Episode 9.2: VECTOR_STORE env var switches between pgvector and OpenSearch.
+    Java analogy: @ConditionalOnProperty — same bean, different implementation
+    injected based on configuration.
 
-    opensearch_host override is used in Airflow where the host
-    is the container name (opensearch:9200) not localhost.
+    VECTOR_STORE=pgvector  → PgVectorClient (default, prod)
+    VECTOR_STORE=opensearch → OpenSearchClient (legacy, local dev)
     """
     if settings is None:
         settings = get_settings()
@@ -33,12 +30,21 @@ def make_hybrid_indexing_service(
 
     embeddings_client = make_embeddings_client(settings)
 
-    # Use fresh (non-cached) OpenSearch client
-    # Airflow tasks may run with different hosts than the FastAPI app
-    opensearch_client = make_opensearch_client_fresh(settings, host=opensearch_host)
+    # Dynamic vector store selection
+    vector_store = getattr(settings, "vector_store", "pgvector").lower()
+
+    if vector_store == "opensearch":
+        from src.services.opensearch.factory import make_opensearch_client_fresh
+
+        vector_client = make_opensearch_client_fresh(settings, host=opensearch_host)
+    else:
+        # pgvector is default
+        from src.services.pgvector.client import PgVectorClient
+
+        vector_client = PgVectorClient(settings=settings)
 
     return HybridIndexingService(
         chunker=chunker,
         embeddings_client=embeddings_client,
-        opensearch_client=opensearch_client,
+        opensearch_client=vector_client,  # same param name — no change in HybridIndexingService
     )

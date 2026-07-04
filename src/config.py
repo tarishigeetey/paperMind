@@ -185,6 +185,8 @@ class Settings(BaseConfigSettings):
     postgres_pool_size: int = 20
     postgres_max_overflow: int = 0
 
+    vector_store: str = "pgvector"
+
     # Ollama
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.2:1b"

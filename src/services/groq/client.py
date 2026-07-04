@@ -1,7 +1,3 @@
-# src/services/groq/client.py
-#
-# Episode 9.1 — Groq replaces Ollama
-#
 # Java analogy: this is like swapping a JDBC driver.
 # The interface (OllamaClient) stays identical — same method signatures,
 # same return types. Only the implementation changes underneath.

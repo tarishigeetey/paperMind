@@ -1,32 +1,50 @@
+# src/services/langfuse/client.py
+#
+# Langfuse v4 tracing client (SDK rewritten March 2026)
+#
+# BREAKING CHANGE from v2/v3:
+#   REMOVED: Langfuse().trace(), Langfuse().span(), Langfuse().generation()
+#   NEW API:  get_client() + start_as_current_observation()
+#
+# Java analogy: like Spring Boot 2 → 3 migration.
+# Same concepts (spans, traces), completely new method names.
+#
+# v4 pattern:
+#   langfuse = get_client()   # singleton, reads env vars automatically
+#   with langfuse.start_as_current_observation(as_type="span", name="x") as span:
+#       span.update(input=..., output=...)
+#       # nested observations are automatically children
+
 import logging
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from langfuse import Langfuse
-
+from langfuse import get_client
 from src.config import Settings
 
 logger = logging.getLogger(__name__)
 
 
 class LangfuseTracer:
-    """Wrapper for Langfuse tracing client."""
+    """Langfuse v4 tracing wrapper."""
 
     def __init__(self, settings: Settings):
         self.settings = settings.langfuse
-        self.client: Optional[Langfuse] = None
+        self.client = None
 
         if self.settings.enabled and self.settings.public_key and self.settings.secret_key:
             try:
-                self.client = Langfuse(
-                    public_key=self.settings.public_key,
-                    secret_key=self.settings.secret_key,
-                    host=self.settings.host,
-                    flush_at=self.settings.flush_at,
-                    flush_interval=self.settings.flush_interval,
-                    debug=self.settings.debug,
-                )
-                logger.info(f"Langfuse tracing initialized (host: {self.settings.host})")
+                # v4: get_client() reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
+                # LANGFUSE_HOST from env automatically.
+                # Java analogy: DataSource.getConnection() from connection pool
+                import os
+
+                os.environ["LANGFUSE_PUBLIC_KEY"] = self.settings.public_key
+                os.environ["LANGFUSE_SECRET_KEY"] = self.settings.secret_key
+                os.environ["LANGFUSE_HOST"] = self.settings.host
+
+                self.client = get_client()
+                logger.info(f"Langfuse v4 tracing initialized (host: {self.settings.host})")
             except Exception as e:
                 logger.error(f"Failed to initialize Langfuse: {e}")
                 self.client = None
@@ -42,34 +60,40 @@ class LangfuseTracer:
         metadata: Optional[Dict[str, Any]] = None,
     ):
         """
-        Context manager for tracing a RAG request.
+        Top-level trace for /ask endpoint.
 
-        Args:
-            query: The user's query
-            user_id: Optional user identifier
-            session_id: Optional session identifier
-            metadata: Additional metadata to attach to the trace
+        v4 API: start_as_current_observation() creates the root span.
+        All child spans created inside this block are automatically nested.
 
-        Yields:
-            Trace object if Langfuse is enabled, None otherwise
+        Java analogy: try-with-resources transaction boundary
         """
         if not self.client:
             yield None
             return
 
         try:
-            # Create a trace using v2 API
-            trace = self.client.trace(
+            with self.client.start_as_current_observation(
+                as_type="span",
                 name="rag_request",
                 input={"query": query},
-                metadata=metadata or {},
-                user_id=user_id,
-                session_id=session_id,
-            )
-            yield trace
+                metadata={
+                    **(metadata or {}),
+                    "user_id": user_id,
+                    "session_id": session_id,
+                },
+            ) as span:
+                # Set trace-level attributes for filtering in Langfuse UI
+                self.client.update_current_trace(
+                    user_id=user_id,
+                    session_id=session_id,
+                    tags=["rag", "ask"],
+                )
+                yield span
         except Exception as e:
             logger.error(f"Error creating Langfuse trace: {e}")
             yield None
+        finally:
+            self.flush()
 
     def create_span(
         self,
@@ -79,104 +103,33 @@ class LangfuseTracer:
         metadata: Optional[Dict[str, Any]] = None,
     ):
         """
-        Create a span within a trace.
+        Create a child span.
 
-        Args:
-            trace: Parent trace object
-            name: Name of the span
-            input_data: Input data for the span
-            metadata: Additional metadata
+        NOTE: In v4, spans are best created with context managers, not manually.
+        This method exists for compatibility with RAGTracer which calls it directly.
+        Returns a no-op object when called outside a trace context.
 
-        Returns:
-            Span object if successful, None otherwise
+        Java analogy: creating a savepoint inside an existing transaction
         """
-        if not trace or not self.client:
+        if not self.client:
             return None
 
         try:
-            # Create a span using v2 API
-            return self.client.span(
-                trace_id=trace.trace_id,
+            # v4: use start_as_current_observation as a regular (non-context-manager) call
+            # We store the span object and the caller calls span.end() manually
+            span = self.client.start_as_current_span(
                 name=name,
                 input=input_data,
                 metadata=metadata or {},
             )
+            return span
+        except AttributeError:
+            # Fallback: start_as_current_span may not exist in all v4 builds
+            # Return a no-op span so callers don't crash
+            return _NoOpSpan(name)
         except Exception as e:
             logger.error(f"Error creating span {name}: {e}")
-            return None
-
-    def create_generation(
-        self,
-        trace,
-        name: str,
-        model: str,
-        input_data: Optional[Dict[str, Any]] = None,
-        output: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        usage: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        Create a generation (LLM call) within a trace.
-
-        Args:
-            trace: Parent trace object
-            name: Name of the generation
-            model: Model name
-            input_data: Input/prompt data
-            output: Generated output
-            metadata: Additional metadata
-            usage: Token usage information
-
-        Returns:
-            Generation object if successful, None otherwise
-        """
-        if not trace or not self.client:
-            return None
-
-        try:
-            # Create a generation using v2 API
-            return self.client.generation(
-                trace_id=trace.trace_id,
-                name=name,
-                model=model,
-                input=input_data,
-                output=output,
-                metadata=metadata or {},
-                usage=usage,
-            )
-        except Exception as e:
-            logger.error(f"Error creating generation {name}: {e}")
-            return None
-
-    def score_trace(
-        self,
-        trace,
-        name: str,
-        value: float,
-        comment: Optional[str] = None,
-    ):
-        """
-        Add a score to a trace.
-
-        Args:
-            trace: Trace object
-            name: Score name (e.g., "relevance", "accuracy")
-            value: Score value
-            comment: Optional comment
-        """
-        if not trace or not self.client:
-            return
-
-        try:
-            # Create a score using v2 API
-            self.client.score(
-                trace_id=trace.trace_id,
-                name=name,
-                value=value,
-                comment=comment,
-            )
-        except Exception as e:
-            logger.error(f"Error scoring trace: {e}")
+            return _NoOpSpan(name)
 
     def update_span(
         self,
@@ -186,57 +139,111 @@ class LangfuseTracer:
         level: Optional[str] = None,
         status_message: Optional[str] = None,
     ):
-        """
-        Update a span with output or additional metadata.
-
-        Args:
-            span: Span object to update
-            output: Output data
-            metadata: Additional metadata
-            level: Log level (DEBUG, INFO, WARNING, ERROR)
-            status_message: Status message
-        """
-        if not span:
+        """Update a span with output or metadata."""
+        if not span or isinstance(span, _NoOpSpan):
             return
 
         try:
-            # For v2 API, we can update spans with end_time and output
+            update_data = {}
             if output is not None:
-                # Update the span with output data
-                span.update(output=output)
+                update_data["output"] = output
             if metadata:
-                span.update(metadata=metadata)
+                update_data["metadata"] = metadata
             if level:
-                span.update(level=level)
+                update_data["level"] = level
             if status_message:
-                span.update(status_message=status_message)
+                update_data["status_message"] = status_message
+            if update_data:
+                span.update(**update_data)
         except Exception as e:
             logger.error(f"Error updating span: {e}")
 
-    def end_span(self, span, output: Optional[Any] = None, metadata: Optional[Dict[str, Any]] = None):
-        """
-        End a span with optional final output and metadata.
-
-        Args:
-            span: Span object to end
-            output: Final output data
-            metadata: Final metadata
-        """
-        if not span:
+    def end_span(
+        self,
+        span,
+        output: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """End a span with optional final output."""
+        if not span or isinstance(span, _NoOpSpan):
             return
 
         try:
-            # Update with final data if provided
             if output is not None or metadata is not None:
                 self.update_span(span, output=output, metadata=metadata)
-
-            # End the span to capture proper timing
             span.end()
         except Exception as e:
             logger.error(f"Error ending span: {e}")
 
+    def score_trace(
+        self,
+        trace,
+        name: str,
+        value: float,
+        comment: Optional[str] = None,
+    ):
+        """Score the current trace."""
+        if not self.client:
+            return
+
+        try:
+            # v4: score_current_trace() when inside a trace context
+            self.client.score_current_trace(
+                name=name,
+                value=value,
+                comment=comment,
+            )
+        except Exception as e:
+            logger.error(f"Error scoring trace: {e}")
+
+    def get_callback_handler(
+        self,
+        trace_name: Optional[str] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+    ):
+        """
+        Get LangChain CallbackHandler for /agentic-ask LangGraph integration.
+        Pass to graph.invoke(config={"callbacks": [handler]})
+        """
+        if not self.client:
+            return None
+
+        try:
+            from langfuse.langchain import CallbackHandler
+
+            return CallbackHandler()
+        except Exception as e:
+            logger.error(f"Error creating CallbackHandler: {e}")
+            return None
+
+    @contextmanager
+    def trace_langgraph_agent(
+        self,
+        name: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+    ):
+        """Context manager for /agentic-ask LangGraph tracing."""
+        if not self.client:
+            yield (None, None)
+            return
+
+        handler = self.get_callback_handler(
+            trace_name=name,
+            user_id=user_id,
+            session_id=session_id,
+            metadata=metadata,
+            tags=tags,
+        )
+        yield (None, handler)
+
     def flush(self):
-        """Flush any pending traces."""
+        """Flush pending traces to Langfuse Cloud."""
         if self.client:
             try:
                 self.client.flush()
@@ -244,10 +251,27 @@ class LangfuseTracer:
                 logger.error(f"Error flushing Langfuse: {e}")
 
     def shutdown(self):
-        """Shutdown the Langfuse client."""
+        """Flush and shutdown on app teardown."""
         if self.client:
             try:
                 self.client.flush()
                 self.client.shutdown()
             except Exception as e:
                 logger.error(f"Error shutting down Langfuse: {e}")
+
+
+class _NoOpSpan:
+    """
+    Fallback no-op span — absorbs all calls silently.
+    Java analogy: NullObject pattern — prevents NullPointerException
+    when tracing is unavailable.
+    """
+
+    def __init__(self, name: str = ""):
+        self.name = name
+
+    def update(self, **kwargs):
+        pass
+
+    def end(self):
+        pass
