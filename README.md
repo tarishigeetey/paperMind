@@ -7,6 +7,8 @@
 Everything below is one continuous pipeline. This is the whole system, start to finish.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
+flowchart TD
     subgraph P1["Phase 1 · Infrastructure"]
         PG[("PostgreSQL")]
         OS[("OpenSearch")]
