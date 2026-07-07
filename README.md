@@ -1,4 +1,4 @@
-# PaperMind
+# Papermind
 **Production Agentic RAG System · Full Architecture Reference**
 ---
 
