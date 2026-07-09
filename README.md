@@ -1,341 +1,196 @@
 # Papermind
-**Production Agentic RAG System · Full Architecture Reference**
----
 
-## Master End-to-End Flow
+**Production-Grade Agentic RAG System for Academic Research**
 
-Everything below is one continuous pipeline. This is the whole system, start to finish.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688.svg" alt="FastAPI">
+  <img src="https://img.shields.io/badge/OpenSearch-2.19-orange.svg" alt="OpenSearch">
+  <img src="https://img.shields.io/badge/LangGraph-Agentic-3730a3.svg" alt="LangGraph">
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ed.svg" alt="Docker">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
+</p>
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    subgraph P1["Phase 1 · Infrastructure"]
-        PG[("PostgreSQL")]
-        OS[("OpenSearch")]
-        AF["Airflow"]
-        OL["Ollama"]
-    end
+Papermind is an end-to-end research assistant that automatically ingests academic papers from arXiv, makes them searchable through hybrid keyword and semantic retrieval, and answers research questions with a decision-making agent — accessible over a REST API, a Gradio web interface, and a Telegram bot.
 
-    subgraph P2["Phase 2 · Ingestion"]
-        ARX["arXiv API\n(rate-limited)"] --> DL["PDF Download"]
-        DL --> PARSE["Docling Parser"]
-        PARSE --> UPSERT["Upsert → PostgreSQL"]
-    end
-
-    subgraph P3["Phase 3 · Keyword Search"]
-        UPSERT --> MIG["Migrate to OpenSearch"]
-        MIG --> BM25["BM25 Index\n(title×3, abstract×2, content×1)"]
-    end
-
-    subgraph P4["Phase 4 · Chunking + Hybrid"]
-        BM25 --> CHUNK["Section-based Chunking\n(600w / 100w overlap)"]
-        CHUNK --> EMBED["Jina Embeddings\n(1024-dim)"]
-        EMBED --> HYB[("Unified Index\narxiv-papers-chunks")]
-        HYB --> RRF["Hybrid Search\n(BM25 + Vector → RRF fusion)"]
-    end
-
-    subgraph P5["Phase 5 · RAG Generation"]
-        RRF --> CTX["Context Assembly"]
-        CTX --> LLM["Ollama LLM\n(llama3.2)"]
-        LLM --> STREAM["/ask + /stream endpoints"]
-    end
-
-    subgraph P6["Phase 6 · Monitoring + Caching"]
-        STREAM --> RCACHE{Redis Cache}
-        RCACHE -- hit --> FAST["~100ms response"]
-        RCACHE -- miss --> TRACE["Langfuse Trace\n(latency, cost, quality)"]
-        TRACE --> FAST
-    end
-
-    subgraph P7["Phase 7 · Agentic RAG + Telegram"]
-        FAST --> GUARD["Guardrail Node"]
-        GUARD -- in-scope --> RETR["Retrieve"]
-        GUARD -- out-of-scope --> DECLINE["Polite decline"]
-        RETR --> GRADE{Grade\nDocuments}
-        GRADE -- relevant --> GEN["Generate Answer"]
-        GRADE -- not relevant --> REWRITE["Rewrite Query"] --> RETR
-        GEN --> API["/api/v1/ask-agentic"]
-        API --> TG["Telegram Bot"]
-        API --> WEB["Gradio Web UI"]
-    end
-
-    PG -.persists.-> UPSERT
-    OS -.powers.-> BM25
-    AF -.schedules.-> ARX
-    OL -.serves.-> LLM
-
-    style BM25 fill:#92400e,color:#fff
-    style HYB fill:#92400e,color:#fff
-    style RRF fill:#92400e,color:#fff
-    style EMBED fill:#3730a3,color:#fff
-    style GUARD fill:#3730a3,color:#fff
-    style GRADE fill:#3730a3,color:#fff
-    style LLM fill:#334155,color:#fff
-    style GEN fill:#334155,color:#fff
-    style RCACHE fill:#0f766e,color:#fff
-    style TRACE fill:#0f766e,color:#fff
-    style DECLINE fill:#7f1d1d,color:#fff
-```
-
-**Reading it left to right:** raw papers come in (Phase 1–2), get made searchable two ways (Phase 3 keyword, Phase 4 hybrid), get turned into generated answers (Phase 5), get cached and observed (Phase 6), and finally get wrapped in a decision-making agent exposed over API/Telegram/Gradio (Phase 7). Every later phase builds strictly on top of the one before it — nothing is replaced, only layered.
+The system is built the way production RAG is built in industry: a solid keyword-search foundation first, enhanced with vector retrieval for hybrid ranking, then layered with generation, caching, observability, and agentic reasoning. Every stage builds strictly on the one before it — nothing is replaced, only extended.
 
 ---
 
-## 1 · Infrastructure Foundation (Phase 1)
+## Table of Contents
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart LR
-    subgraph Client["Client Layer"]
-        Browser[Browser / curl / Postman]
-    end
-    subgraph App["Application Layer"]
-        API["FastAPI :8000"]
-    end
-    subgraph Data["Data Layer"]
-        PG[("PostgreSQL 16 :5432")]
-        OS[("OpenSearch 2.19 :9200/:5601")]
-    end
-    subgraph Orchestration["Orchestration"]
-        AF["Airflow 3.0 :8080"]
-    end
-    subgraph Inference["Inference"]
-        OL["Ollama :11434"]
-    end
-    Browser --> API
-    API --> PG
-    API --> OS
-    API --> OL
-    AF --> PG
-    AF --> OS
+- [Quick Start](#quick-start)
+- [Stage 1 · Infrastructure Foundation](#stage-1--infrastructure-foundation)
+- [Stage 2 · Data Ingestion Pipeline](#stage-2--data-ingestion-pipeline)
+- [Stage 3 · Keyword Search Foundation](#stage-3--keyword-search-foundation)
+- [Stage 4 · Chunking & Hybrid Search](#stage-4--chunking--hybrid-search)
+- [Stage 5 · RAG Generation](#stage-5--rag-generation)
+- [Stage 6 · Monitoring & Caching](#stage-6--monitoring--caching)
+- [Stage 7 · Agentic RAG & Telegram Bot](#stage-7--agentic-rag--telegram-bot)
+- [Technology Stack](#technology-stack)
+- [Service Access](#service-access)
+- [Project Structure](#project-structure)
+- [Essential Commands](#essential-commands)
 
-    style API fill:#1e3a8a,color:#fff
-    style PG fill:#0f766e,color:#fff
-    style OS fill:#92400e,color:#fff
-    style AF fill:#3730a3,color:#fff
-    style OL fill:#334155,color:#fff
-```
+---
 
-| Service | Port(s) | Role |
-|---|---|---|
-| FastAPI | 8000 | REST API, async, auto docs |
-| PostgreSQL 16 | 5432 | Paper metadata & parsed content |
-| OpenSearch 2.19 | 9200, 5601 | Search engine + dashboards |
-| Airflow 3.0 | 8080 | Scheduled ingestion DAGs |
-| Ollama | 11434 | Local LLM inference |
+## Quick Start
+
+### Prerequisites
+
+- **Docker Desktop** with Docker Compose
+- **Python 3.12+**
+- **UV Package Manager** — [installation guide](https://docs.astral.sh/uv/getting-started/installation/)
+- **8 GB+ RAM** and **20 GB+ free disk space**
+
+### Get Running
 
 ```bash
-git clone <repository-url> && cd papermind
+# 1. Clone and enter the project
+git clone <repository-url>
+cd papermind
+
+# 2. Configure environment (defaults work out of the box)
 cp .env.example .env
+# Add your Jina embeddings API key and Langfuse keys for Stages 4 and 6
+
+# 3. Install dependencies
 uv sync
+
+# 4. Start all services
 docker compose up --build -d
+
+# 5. Verify the system is healthy
 curl http://localhost:8000/health
 ```
 
+> **Note:** Airflow credentials are generated in `airflow/simple_auth_manager_passwords.json.generated`.
+
 ---
 
-## 2 · Data Ingestion Pipeline (Phase 2)
+## Stage 1 · Infrastructure Foundation
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    A["arXiv Search Query (cs.AI)"] --> B["ArxivClient\nRate-limited (3s) + retry"]
-    B --> C["PDF Download + cache"]
-    C --> D["Docling Parser"]
-    D --> E{Parse OK?}
-    E -- Yes --> F["PaperRepository\nUpsert into PostgreSQL"]
-    E -- No --> G["Log + continue"]
-    F --> H["Available via /api/v1/papers"]
-    G --> H
+The containerized backbone that powers every later stage: API, storage, search, orchestration, and local inference, wired together through Docker Compose with health checks on each service.
 
-    style B fill:#1e3a8a,color:#fff
-    style D fill:#92400e,color:#fff
-    style F fill:#0f766e,color:#fff
-    style G fill:#7f1d1d,color:#fff
-```
+<p align="center">
+  <img src="screenshots/stage-01-infra-setup.png" alt="Stage 1 — Infrastructure Foundation" width="850">
+</p>
 
-Orchestrated by `MetadataFetcher`. Upsert keyed on `arxiv_id` keeps daily re-runs idempotent. Airflow DAG: `setup → fetch → parse → store → report → cleanup`.
+| Service | Port(s) | Role |
+|---|---|---|
+| FastAPI | 8000 | REST API, async, automatic docs |
+| PostgreSQL 16 | 5432 | Paper metadata and parsed content |
+| OpenSearch 2.19 | 9200, 5601 | Search engine and dashboards |
+| Airflow 3.0 | 8080 | Scheduled ingestion DAGs |
+| Ollama | 11434 | Local LLM inference |
+
+---
+
+## Stage 2 · Data Ingestion Pipeline
+
+Automated fetching, parsing, and storage of academic papers. Orchestrated by `MetadataFetcher`, with upserts keyed on `arxiv_id` so daily re-runs stay idempotent. The Airflow DAG runs `setup → fetch → parse → store → report → cleanup`.
+
+<p align="center">
+  <img src="screenshots/stage-02-data-ingestion.png" alt="Stage 2 — Data Ingestion Pipeline" width="850">
+</p>
 
 | Metric | Value |
 |---|---|
 | arXiv throughput | ~20 papers/min |
-| PDF parse time | 2–5s/paper |
+| PDF parse time | 2–5 s/paper |
 | Fetch success rate | 95%+ |
 | PDF parse success rate | 80–90% |
 
 ---
 
-## 3 · Keyword Search Foundation (Phase 3)
+## Stage 3 · Keyword Search Foundation
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    subgraph Ingest["Indexing Path"]
-        PG[("PostgreSQL")] --> MIG["Migration"] --> IDX[("OpenSearch\narxiv-papers")]
-    end
-    subgraph Query["Query Path"]
-        REQ["GET/POST /search"] --> QB["Query Builder\nfield boosting"]
-        QB --> BM25["BM25 Scoring"]
-        IDX --> BM25
-        BM25 --> RESP["Ranked results\n+ highlights + pagination"]
-    end
+The keyword-search layer professional RAG systems rely on before adding vectors. Papers migrate from PostgreSQL into an OpenSearch index and are served through a BM25 query path with field boosting and rich result formatting.
 
-    style BM25 fill:#92400e,color:#fff
-    style IDX fill:#92400e,color:#fff
-    style QB fill:#1e3a8a,color:#fff
-```
+<p align="center">
+  <img src="screenshots/stage-03-keyword-retrieval.png" alt="Stage 3 — Keyword Search Foundation" width="850">
+</p>
 
-Field boosting: **title ×3, abstract ×2, content ×1**. Features: highlighting, pagination, category filters, fuzzy matching, two-letter query support (AI, ML, NN, CV). Sub-100ms latency on a 28+ paper test corpus.
+Field boosting weights **title ×3, abstract ×2, content ×1**. Features include result highlighting, pagination, category filters, fuzzy matching, and two-letter query support (AI, ML, NN, CV), with sub-100 ms latency on the test corpus.
 
 ---
 
-## 4 · Chunking & Hybrid Search (Phase 4)
+## Stage 4 · Chunking & Hybrid Search
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    P["Parsed Paper"] --> HAS{Has sections?}
-    HAS -- Yes --> SEC["Chunk by section"]
-    HAS -- No --> PARA["Chunk by paragraph"]
-    SEC --> SIZE["600w target / 100w min"]
-    PARA --> SIZE
-    SIZE --> OVERLAP["100-word overlap"]
-    OVERLAP --> OUT["Chunks ready for embedding"]
+The semantic layer. Documents are chunked section-aware, embedded with Jina, and served from a single unified index that supports keyword, vector, and hybrid retrieval — fused with Reciprocal Rank Fusion.
 
-    style SEC fill:#0f766e,color:#fff
-    style OVERLAP fill:#3730a3,color:#fff
-```
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    Q["Query"] --> B["BM25 → ranked list A"]
-    Q --> EMB["Embed query (Jina, 1024-dim)"]
-    EMB --> V["Vector search → ranked list B"]
-    B --> RRF["Manual RRF fusion (rank-based)"]
-    V --> RRF
-    RRF --> OUT["Final merged ranking"]
-
-    style RRF fill:#92400e,color:#fff
-    style EMB fill:#3730a3,color:#fff
-```
+<p align="center">
+  <img src="screenshots/stage-04-hybrid-retrieval.png" alt="Stage 4 — Chunking & Hybrid Search" width="850">
+</p>
 
 | Mode | Latency | Recall@10 | Precision@10 |
 |---|---|---|---|
-| BM25 Only | 52ms | 0.78 | 0.65 |
-| Vector Only | 105ms | 0.82 | 0.71 |
-| **Hybrid (RRF)** | 2.4s | **0.89** | **0.84** |
+| BM25 Only | 52 ms | 0.78 | 0.65 |
+| Vector Only | 105 ms | 0.82 | 0.71 |
+| **Hybrid (RRF)** | 2.4 s | **0.89** | **0.84** |
 
-Single index `arxiv-papers-chunks` serves all three modes. Falls back to BM25-only automatically if the embedding service is unavailable.
+A single index, `arxiv-papers-chunks`, serves all three modes and falls back to BM25-only automatically if the embedding service is unavailable.
 
 **Endpoint:** `POST /api/v1/hybrid-search/`
 
 ---
 
-## 5 · Complete RAG Generation (Phase 5)
+## Stage 5 · RAG Generation
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart LR
-    Q["Query"] --> R["Hybrid Retrieval"]
-    R --> CTX["Context Assembly\n(dedup top-k chunks)"]
-    CTX --> LLM["Ollama llama3.2"]
-    LLM --> ANS["Answer + citations"]
-    LLM -.streaming.-> SSE["SSE token stream"]
+The generation layer that turns retrieval into conversation. Retrieved chunks are deduplicated and assembled into context, then passed to a local Ollama model that produces cited answers, with an optional streaming path for low time-to-first-token.
 
-    style LLM fill:#334155,color:#fff
-    style CTX fill:#1e3a8a,color:#fff
-```
+<p align="center">
+  <img src="screenshots/stage-05-complete-rag.png" alt="Stage 5 — RAG Generation" width="850">
+</p>
 
 | Endpoint | Behavior | Time |
 |---|---|---|
-| `POST /api/v1/ask` | Full response + metadata | 15–20s |
-| `POST /api/v1/stream` | SSE token streaming | 2–3s to first token |
+| `POST /api/v1/ask` | Full response with metadata | 15–20 s |
+| `POST /api/v1/stream` | SSE token streaming | 2–3 s to first token |
 
-Optimizations: 80% prompt reduction, 6x speedup (120s → 15–20s), 300-word cap, automatic dedup of cited sources. Gradio UI on port 7861.
+Optimizations include an 80% prompt reduction (a 6× speedup from ~120 s to 15–20 s), a 300-word answer cap, and automatic deduplication of cited sources. The Gradio UI runs on port 7861.
 
 ---
 
-## 6 · Production Monitoring & Caching (Phase 6)
+## Stage 6 · Monitoring & Caching
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    Q["Query"] --> CACHE{Redis cache}
-    CACHE -- "Hit ~100ms" --> FAST["Return cached answer"]
-    CACHE -- Miss --> PIPE["Full RAG pipeline ~15-20s"]
-    PIPE --> STORE["Store (24h TTL)"]
-    STORE --> RESP["Return answer"]
-    FAST --> TRACE["Langfuse trace"]
-    RESP --> TRACE
+Production observability and performance. A parameter-aware Redis cache short-circuits repeated queries, while Langfuse traces latency, cost, and quality on every request.
 
-    style CACHE fill:#92400e,color:#fff
-    style TRACE fill:#3730a3,color:#fff
-```
+<p align="center">
+  <img src="screenshots/stage-06-monitoring-caching.png" alt="Stage 6 — Monitoring & Caching" width="850">
+</p>
 
 | Scenario | Time | Change |
 |---|---|---|
-| Cache miss | 15–20s | baseline |
-| **Cache hit** | **50–100ms** | **150–400x faster** |
+| Cache miss | 15–20 s | baseline |
+| **Cache hit** | **50–100 ms** | **150–400× faster** |
 | Monitoring overhead | <2% | negligible |
 
-Cache keys are parameter-aware (query + top_k + mode + model). Langfuse traces latency, cost, and quality per request.
+Cache keys incorporate the query, `top_k`, retrieval mode, and model, so results never collide across different request shapes.
 
 ---
 
-## 7 · Agentic RAG & Telegram Bot (Phase 7)
+## Stage 7 · Agentic RAG & Telegram Bot
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    START(["START"]) --> GR["guardrail"]
-    GR -- continue --> RET["retrieve"]
-    GR -- out_of_scope --> OOS["out_of_scope"] --> ENDX(["END"])
-    RET -- "tools" --> TOOL["tool_retrieve\n(ToolNode → OpenSearch)"]
-    RET -- "END" --> ENDX
-    TOOL --> GRADE["grade_documents"]
-    GRADE -- generate_answer --> GEN["generate_answer"]
-    GRADE -- rewrite_query --> REWRITE["rewrite_query"] --> RET
-    GEN --> ENDX
+The reasoning layer. A LangGraph workflow adds guardrails, document grading, and adaptive query rewriting, then exposes the whole system over both an API endpoint and a Telegram bot for mobile access.
 
-    style GR fill:#3730a3,color:#fff
-    style GRADE fill:#92400e,color:#fff
-    style TOOL fill:#0f766e,color:#fff
-    style GEN fill:#334155,color:#fff
-    style OOS fill:#7f1d1d,color:#fff
-```
+<p align="center">
+  <img src="screenshots/stage-07-telegram-agentic-ai.png" alt="Stage 7 — Agentic RAG & Telegram Bot" width="850">
+</p>
 
-| Node | File | Job |
+| Node | File | Responsibility |
 |---|---|---|
 | `guardrail` | `nodes/guardrail_node.py` | Domain-relevance check before retrieval |
 | `out_of_scope` | `nodes/out_of_scope_node.py` | Polite decline for off-topic queries |
-| `retrieve` | `nodes/retrieve_node.py` | Builds retrieval tool call |
+| `retrieve` | `nodes/retrieve_node.py` | Builds the retrieval tool call |
 | `tool_retrieve` | LangGraph `ToolNode` | Executes hybrid search |
-| `grade_documents` | `nodes/grade_documents_node.py` | Scores retrieved doc relevance |
-| `rewrite_query` | `nodes/rewrite_query_node.py` | Reformulates query, loops back |
+| `grade_documents` | `nodes/grade_documents_node.py` | Scores retrieved document relevance |
+| `rewrite_query` | `nodes/rewrite_query_node.py` | Reformulates the query and loops back |
 | `generate_answer` | `nodes/generate_answer_node.py` | Final cited answer via Ollama |
 
-**Endpoint:** `POST /api/v1/ask-agentic` — returns `answer`, `sources`, `reasoning_steps`, `retrieval_attempts`.
+**Endpoint:** `POST /api/v1/ask-agentic` — returns `answer`, `sources`, `reasoning_steps`, and `retrieval_attempts`.
 
-### Telegram Bot
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f1f5f9', 'primaryTextColor': '#1e293b', 'primaryBorderColor': '#64748b', 'lineColor': '#64748b', 'secondaryColor': '#e2e8f0', 'tertiaryColor': '#f8fafc', 'clusterBkg': '#f8fafc', 'clusterBorder': '#94a3b8' }}}%%
-flowchart TD
-    U["Telegram User"] --> BOT["Bot (polling/webhook)"]
-    BOT --> HAND["Handlers"]
-    HAND --> CACHE{Redis cache}
-    CACHE -- "Hit ~100ms" --> RESP["Instant response"]
-    CACHE -- Miss --> AGENT["Full Agentic RAG"]
-    AGENT --> STORE["Cache store"] --> RESP
-    RESP --> FMT["Format (Markdown, links)"] --> U
-
-    style BOT fill:#1e3a8a,color:#fff
-    style AGENT fill:#3730a3,color:#fff
-    style CACHE fill:#0f766e,color:#fff
-```
-
-Commands: `/start` `/help` `/ask` `/search` `/settings` `/status` `/clear`. Access control via `TELEGRAM__ALLOWED_USER_IDS` (empty = open, populated = whitelist).
+Commands: `/start` `/help` `/ask` `/search` `/settings` `/status` `/clear`. Access control is handled through `TELEGRAM__ALLOWED_USER_IDS` (empty = open, populated = whitelist).
 
 ```bash
 TELEGRAM__ENABLED=true
@@ -361,21 +216,67 @@ docker compose up --build -d
 | LangGraph | Agent orchestration |
 | Telegram Bot API | Mobile interface |
 
+**Development tooling:** UV, Ruff, MyPy, Pytest, Docker Compose.
+
+---
+
 ## Service Access
 
-| Service | URL |
-|---|---|
-| API Docs | http://localhost:8000/docs |
-| Gradio UI | http://localhost:7861 |
-| Langfuse | http://localhost:3000 |
-| Airflow | http://localhost:8080 |
-| OpenSearch Dashboards | http://localhost:5601 |
+| Service | URL | Purpose |
+|---|---|---|
+| API Documentation | http://localhost:8000/docs | Interactive API explorer |
+| Gradio UI | http://localhost:7861 | Conversational web interface |
+| Langfuse | http://localhost:3000 | Pipeline monitoring and tracing |
+| Airflow | http://localhost:8080 | Workflow management |
+| OpenSearch Dashboards | http://localhost:5601 | Search engine UI |
+
+---
+
+## Project Structure
+
+```
+papermind/
+├── src/
+│   ├── routers/          # API endpoints (search, ask, papers, agentic)
+│   ├── services/         # Business logic (opensearch, ollama, agents, cache)
+│   │   └── agents/nodes/ # LangGraph agent nodes
+│   ├── models/           # SQLAlchemy database models
+│   ├── schemas/          # Pydantic validation schemas
+│   └── config.py         # Environment configuration
+├── notebooks/            # Staged learning materials (stage1–7)
+├── airflow/              # Workflow orchestration (DAGs)
+├── tests/                # Test suite
+└── compose.yml           # Docker service orchestration
+```
+
+---
 
 ## Essential Commands
 
 ```bash
-make start    # Start all services
-make health   # Check service health
-make test     # Run tests
-make stop     # Stop services
+make start     # Start all services
+make health    # Check service health
+make test      # Run tests
+make stop      # Stop services
 ```
+
+| Command | Description |
+|---|---|
+| `make start` | Start all services |
+| `make stop` | Stop all services |
+| `make restart` | Restart all services |
+| `make status` | Show service status |
+| `make logs` | Show service logs |
+| `make health` | Check all services health |
+| `make setup` | Install Python dependencies |
+| `make format` | Format code |
+| `make lint` | Lint and type-check |
+| `make test` | Run tests |
+| `make test-cov` | Run tests with coverage |
+| `make clean` | Tear everything down |
+
+---
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE) for details.
