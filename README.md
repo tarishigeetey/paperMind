@@ -73,7 +73,7 @@ curl http://localhost:8000/health
 The containerized backbone that powers every later stage: API, storage, search, orchestration, and local inference, wired together through Docker Compose with health checks on each service.
 
 <p align="center">
-  <img src="screenshots/stage-01-infra-setup.png" alt="Stage 1 — Infrastructure Foundation" width="850">
+  <img src="stages-of-development/stage-01-infra-setup.png" alt="Stage 1 — Infrastructure Foundation" width="850">
 </p>
 
 | Service | Port(s) | Role |
@@ -91,7 +91,7 @@ The containerized backbone that powers every later stage: API, storage, search, 
 Automated fetching, parsing, and storage of academic papers. Orchestrated by `MetadataFetcher`, with upserts keyed on `arxiv_id` so daily re-runs stay idempotent. The Airflow DAG runs `setup → fetch → parse → store → report → cleanup`.
 
 <p align="center">
-  <img src="screenshots/stage-02-data-ingestion.png" alt="Stage 2 — Data Ingestion Pipeline" width="850">
+  <img src="stages-of-development/stage-02-data-ingestion.png" alt="Stage 2 — Data Ingestion Pipeline" width="850">
 </p>
 
 | Metric | Value |
@@ -108,7 +108,7 @@ Automated fetching, parsing, and storage of academic papers. Orchestrated by `Me
 The keyword-search layer professional RAG systems rely on before adding vectors. Papers migrate from PostgreSQL into an OpenSearch index and are served through a BM25 query path with field boosting and rich result formatting.
 
 <p align="center">
-  <img src="screenshots/stage-03-keyword-retrieval.png" alt="Stage 3 — Keyword Search Foundation" width="850">
+  <img src="stages-of-development/stage-03-keyword-retrieval.png" alt="Stage 3 — Keyword Search Foundation" width="850">
 </p>
 
 Field boosting weights **title ×3, abstract ×2, content ×1**. Features include result highlighting, pagination, category filters, fuzzy matching, and two-letter query support (AI, ML, NN, CV), with sub-100 ms latency on the test corpus.
@@ -120,7 +120,7 @@ Field boosting weights **title ×3, abstract ×2, content ×1**. Features includ
 The semantic layer. Documents are chunked section-aware, embedded with Jina, and served from a single unified index that supports keyword, vector, and hybrid retrieval — fused with Reciprocal Rank Fusion.
 
 <p align="center">
-  <img src="screenshots/stage-04-hybrid-retrieval.png" alt="Stage 4 — Chunking & Hybrid Search" width="850">
+  <img src="stages-of-development/stage-04-hybrid-retrieval.png" alt="Stage 4 — Chunking & Hybrid Search" width="850">
 </p>
 
 | Mode | Latency | Recall@10 | Precision@10 |
@@ -140,7 +140,7 @@ A single index, `arxiv-papers-chunks`, serves all three modes and falls back to 
 The generation layer that turns retrieval into conversation. Retrieved chunks are deduplicated and assembled into context, then passed to a local Ollama model that produces cited answers, with an optional streaming path for low time-to-first-token.
 
 <p align="center">
-  <img src="screenshots/stage-05-complete-rag.png" alt="Stage 5 — RAG Generation" width="850">
+  <img src="stages-of-development/stage-05-complete-rag.png" alt="Stage 5 — RAG Generation" width="850">
 </p>
 
 | Endpoint | Behavior | Time |
@@ -157,7 +157,7 @@ Optimizations include an 80% prompt reduction (a 6× speedup from ~120 s to 15�
 Production observability and performance. A parameter-aware Redis cache short-circuits repeated queries, while Langfuse traces latency, cost, and quality on every request.
 
 <p align="center">
-  <img src="screenshots/stage-06-monitoring-caching.png" alt="Stage 6 — Monitoring & Caching" width="850">
+  <img src="stages-of-development/stage-06-monitoring-caching.png" alt="Stage 6 — Monitoring & Caching" width="850">
 </p>
 
 | Scenario | Time | Change |
@@ -175,7 +175,7 @@ Cache keys incorporate the query, `top_k`, retrieval mode, and model, so results
 The reasoning layer. A LangGraph workflow adds guardrails, document grading, and adaptive query rewriting, then exposes the whole system over both an API endpoint and a Telegram bot for mobile access.
 
 <p align="center">
-  <img src="screenshots/stage-07-telegram-agentic-ai.png" alt="Stage 7 — Agentic RAG & Telegram Bot" width="850">
+  <img src="stages-of-development/stage-07-telegram-agentic-ai.png" alt="Stage 7 — Agentic RAG & Telegram Bot" width="850">
 </p>
 
 | Node | File | Responsibility |
