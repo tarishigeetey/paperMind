@@ -276,6 +276,12 @@ make stop      # Stop services
 | `make clean` | Tear everything down |
 
 ---
+ 
+## Acknowledgments
+ 
+Papermind is built on the foundations taught in the **[Production Agentic RAG course](https://github.com/jamwithai/production-agentic-rag-course)** by [jamwithai](https://github.com/jamwithai). Special thanks to [Shirin Khosravi Jam](https://www.linkedin.com/in/shirin-khosravi-jam/) and [Shantanu Ladhwe](https://www.linkedin.com/in/shantanuladhwe/) for creating such a thorough, production-focused learning resource.
+ 
+---
 
 ## License
 
